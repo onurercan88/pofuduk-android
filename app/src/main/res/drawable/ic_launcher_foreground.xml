@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Pofuduk's cloud face, inside the 66dp adaptive-icon safe zone (centre 54,54). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Body: rounded base + three puffs -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:strokeColor="#FFBDC2F5"
+        android:strokeWidth="1"
+        android:pathData="M34,74 L74,74 A11,11 0 0,0 85,63 A10,10 0 0,0 78,53.5 A14,14 0 0,0 57,40 A12,12 0 0,0 38,48 A11,11 0 0,0 23,63 A11,11 0 0,0 34,74 Z" />
+    <!-- Eyes -->
+    <path android:fillColor="#FF292B52" android:pathData="M45,55 m-3,0 a3,4 0 1,0 6,0 a3,4 0 1,0 -6,0" />
+    <path android:fillColor="#FF292B52" android:pathData="M63,55 m-3,0 a3,4 0 1,0 6,0 a3,4 0 1,0 -6,0" />
+    <!-- Cheeks -->
+    <path android:fillColor="#99FF9EB3" android:pathData="M39,62 m-3,0 a3,1.8 0 1,0 6,0 a3,1.8 0 1,0 -6,0" />
+    <path android:fillColor="#99FF9EB3" android:pathData="M69,62 m-3,0 a3,1.8 0 1,0 6,0 a3,1.8 0 1,0 -6,0" />
+    <!-- Smile -->
+    <path
+        android:strokeColor="#FF8C3852"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:pathData="M50,62 Q54,66 58,62" />
+</vector>
