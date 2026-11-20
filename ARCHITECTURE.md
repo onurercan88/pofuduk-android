@@ -48,7 +48,7 @@ app/       Android app (Jetpack Compose, single activity, MVVM)
 | BGAppRefreshTask + UNUserNotificationCenter | WorkManager periodic work + NotificationManager channels — Phase A4 |
 | UserDefaults | SharedPreferences via `KeyValueStore` |
 | Caches directory JSON | `FileWeatherCacheStore(context.cacheDir)` |
-| WeatherKit | Backend proxy (WeatherKit REST) — Phase A6 |
+| WeatherKit | `proxy/weatherkit-worker` (Cloudflare Worker, WeatherKit REST) + `WeatherKitProxyProvider` |
 
 ## Data flow (Home)
 ```

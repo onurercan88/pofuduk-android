@@ -4,17 +4,19 @@ Same principles as iOS: **no accounts, no ads, no analytics, no data collection,
 
 | Data | When | Why | Stored | Shared |
 |---|---|---|---|---|
-| Approximate location (`ACCESS_COARSE_LOCATION` only) | Only in the foreground when a forecast is needed, after Pofuduk's explanation | Local forecast | Last place, coarsened to ~1 km (2 decimals) | Coordinates rounded to 2 decimals (~1 km) to Open-Meteo and to the platform geocoder (place name) |
+| Approximate location (`ACCESS_COARSE_LOCATION` only) | Only in the foreground when a forecast is needed, after Pofuduk's explanation | Local forecast | Last place, coarsened to ~1 km (2 decimals) | Coordinates rounded to 2 decimals (~1 km) to the weather service — Apple Weather through Pofuduk's proxy (Cloudflare Worker: no storage, no logs) or Open-Meteo — and to the platform geocoder (place name) |
 | Place search text | Only while the user types in the picker (≥ 2 letters) | District search | Not stored | The platform geocoder (Google on most devices); the 81 provinces work offline |
 | Microphone / speech | Only after a mic tap, until the question ends (≤ 10 s) | Voice questions | Not stored | On-device recognition when available; otherwise the device's recognition service (usually Google) — the user is told on screen |
 | Notifications | Only if enabled (permission asked then) | Rain/warning/morning alerts | Preferences + delivery log on device | None (local notifications, no push server) |
-| Background refresh | Hourly, only while notifications are on | Plan notifications | Forecast cache | Coarsened (~1 km) last/chosen place to Open-Meteo; location is never requested in the background |
+| Background refresh | Hourly, only while notifications are on | Plan notifications | Forecast cache | Coarsened (~1 km) last/chosen place to the weather service (proxy/Apple or Open-Meteo); location is never requested in the background |
 | Preferences, cached forecasts | Always | App function | On device (SharedPreferences, cache dir) | None |
 
 - Permissions today: `INTERNET`, `ACCESS_COARSE_LOCATION` (asked only after the explanation; picking a city works without it),
   `RECORD_AUDIO` (asked on the first mic tap; typing works without it), `POST_NOTIFICATIONS` (asked when notifications
   are turned on). No exact-alarm, background-location or boot permissions of our own.
-- Logs contain timings only — never coordinates or place names.
+- Logs contain timings only — never coordinates or place names. The WeatherKit proxy keeps no request logs and stores nothing;
+  Cloudflare sees the client IP to route the request and for the in-memory rate limit.
+- The Apple Weather logo is loaded from `weatherkit.apple.com/attribution` (no location in that request).
 - No background location, no continuous microphone.
 - Cloud backup and device transfer are disabled for all app data (`data_extraction_rules.xml`).
 - TextToSpeech: an installed offline Turkish voice is preferred; network voices are not selected.

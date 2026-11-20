@@ -63,7 +63,10 @@ Other debug extras: `--es travel Bursa`, `--ez settings true`; dark mode via `ad
 Play screenshot rule: the long side may be at most twice the short side (hence 1080×1920, not the emulator's 1080×2400).
 
 ## Before release — open items
-- [ ] Open-Meteo: confirm by e-mail that a free, ad-free app is non-commercial (draft in the iOS docs), or move to the
-      WeatherKit proxy (ROADMAP A6) / Open-Meteo API plan.
+- [ ] WeatherKit proxy (recommended): Apple key + Services ID, Cloudflare deploy and secrets, then
+      `pofuduk.weatherkitProxyUrl` / `pofuduk.weatherkitAppKey` in `local.properties` before `bundleRelease`
+      (`proxy/weatherkit-worker/README.md`). Check the footer shows the Apple Weather mark.
+- [ ] Open-Meteo (fallback, or primary without the proxy): confirm by e-mail that a free, ad-free app is non-commercial
+      (draft in the iOS docs) or use an Open-Meteo API plan.
 - [ ] Real-device checks listed under 5.1.
 - [ ] Final launcher icon art (currently a simplified vector; the 512 px store icon uses the real character renderer).

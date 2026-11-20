@@ -57,6 +57,8 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.contentDescription
+import com.pofuduk.app.attribution.AppleWeatherAttributionLoader
+import com.pofuduk.app.graph
 import com.pofuduk.app.home.HomeUiState
 import com.pofuduk.app.home.HomeViewModel
 import com.pofuduk.core.alert.MGMOfficialPage
@@ -287,7 +289,12 @@ fun SettingsDialog(
             }
 
             Section("Veri kaynakları") {
-                LinkRow("Hava verisi: Open-Meteo.com (CC BY 4.0)") { uri.openUri("https://open-meteo.com/") }
+                if (context.graph.appleWeatherEnabled) {
+                    LinkRow("Hava verisi: Apple Weather") { uri.openUri(AppleWeatherAttributionLoader.LEGAL_PAGE) }
+                    LinkRow("Yedek hava verisi: Open-Meteo.com (CC BY 4.0)") { uri.openUri("https://open-meteo.com/") }
+                } else {
+                    LinkRow("Hava verisi: Open-Meteo.com (CC BY 4.0)") { uri.openUri("https://open-meteo.com/") }
+                }
                 LinkRow("Resmi uyarılar: MGM (mgm.gov.tr)") { uri.openUri(MGMOfficialPage.WARNINGS) }
                 Note("Pofuduk'un hava tahminleri resmi uyarı değildir.")
             }

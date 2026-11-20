@@ -84,4 +84,8 @@ Updated: 2026-11-20
 - [ ] Cold start on the emulator took several seconds right after boot (Play updates running); measure on a real device in A2
 - [ ] If the TTS engine restarts mid-briefing (e.g. engine update), speech stops and subtitles stay on the last sentence — consider rebinding/retry
 - [ ] Phases A2–A7 (ROADMAP.md)
-- [ ] Open-Meteo non-commercial confirmation (shared with iOS) or WeatherKit proxy before Play release
+- [x] A6: WeatherKit proxy (`proxy/weatherkit-worker`, 9 Node tests) + Apple Weather provider/cross-check in core
+      (25 tests), attribution UI; verified on the emulator against the Worker code with a fake Apple upstream
+      (primary + fallback/cross-check paths)
+- [ ] A6 live: user creates the WeatherKit key / Services ID, deploys the Worker, sets `local.properties`; then check real data
+- [ ] Open-Meteo non-commercial confirmation (shared with iOS) — still needed while it is the fallback

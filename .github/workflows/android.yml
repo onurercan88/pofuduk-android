@@ -22,6 +22,12 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: WeatherKit proxy tests
+        run: npm test
+        working-directory: proxy/weatherkit-worker
       - name: Core tests + debug APK + release bundle (R8, unsigned)
         run: ./gradlew :core:test :app:assembleDebug :app:bundleRelease --console=plain
       - name: Upload test reports

@@ -18,6 +18,7 @@ Product requirements: the iOS repo's `PRD.md` (read the relevant section only).
 - `scripts\gradle.cmd :core:test` — pure-Kotlin business logic tests (JVM, fast).
 - `scripts\gradle.cmd :app:assembleDebug` — debug APK (`app\build\outputs\apk\debug\`).
 - Live Open-Meteo check (opt-in): `$env:POFUDUK_LIVE_TESTS='1'; scripts\gradle.cmd :core:test`.
+- WeatherKit proxy tests: `cd proxyweatherkit-worker; npm test` (Node 18+). Setup/deploy: `proxy/weatherkit-worker/README.md`.
 - Gradle/SDK commands need the sandbox disabled (they write to `%USERPROFILE%\.gradle` and the SDK).
 - `git push` only works in the user's terminal tabs (sandbox can't read GitHub credentials).
 - Put new business logic in `core` (pure Kotlin/JVM, no Android imports) so it stays testable.

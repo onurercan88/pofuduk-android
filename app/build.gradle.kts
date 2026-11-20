@@ -18,6 +18,19 @@ val keystoreProperties = rootProject.file("keystore.properties").takeIf { it.exi
     Properties().apply { file.inputStream().use(::load) }
 }
 
+/**
+ * Apple Weather (WeatherKit) proxy, from `local.properties` or a Gradle property — never committed:
+ *   pofuduk.weatherkitProxyUrl=https://pofuduk-weatherkit.<account>.workers.dev
+ *   pofuduk.weatherkitAppKey=…
+ * Empty → the app uses Open-Meteo only (CI builds, forks).
+ */
+val localProperties = rootProject.file("local.properties").takeIf { it.exists() }?.let { file ->
+    Properties().apply { file.inputStream().use(::load) }
+}
+fun buildSetting(name: String): String =
+    (providers.gradleProperty(name).orNull ?: localProperties?.getProperty(name) ?: "").trim()
+fun quoted(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+
 android {
     namespace = "com.pofuduk.app"
     compileSdk = 36
@@ -28,6 +41,8 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0.0"
+        buildConfigField("String", "WEATHERKIT_PROXY_URL", quoted(buildSetting("pofuduk.weatherkitProxyUrl")))
+        buildConfigField("String", "WEATHERKIT_APP_KEY", quoted(buildSetting("pofuduk.weatherkitAppKey")))
     }
 
     signingConfigs {

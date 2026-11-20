@@ -1,0 +1,18 @@
+# Pofuduk WeatherKit proxy. Secrets (never in this file): TEAM_ID, KEY_ID, SERVICE_ID, PRIVATE_KEY, optional APP_KEY.
+name = "pofuduk-weatherkit"
+main = "src/index.js"
+compatibility_date = "2025-06-01"
+workers_dev = true
+
+# No request logs: URLs carry (rounded) coordinates.
+[observability]
+enabled = false
+
+# Per-IP limit (in-memory at Cloudflare, nothing stored). 60 requests / minute is far above normal app use.
+[[ratelimits]]
+name = "LIMITER"
+namespace_id = "1001"
+
+  [ratelimits.simple]
+  limit = 60
+  period = 60

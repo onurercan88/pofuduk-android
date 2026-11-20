@@ -27,10 +27,12 @@ subtitles and lip sync, Canvas character with accessories, weather effects and t
   (`core/TravelWeatherService`), MGM official page card, accessibility pass (200% font, labels, decorative emoji hidden).
 - Moved to A7: final launcher icon art, store screenshots (demo data, fixed clock).
 
-## A6 — Data source upgrade (optional before release)
-- Small backend proxy (e.g. Cloudflare Worker) holding the WeatherKit `.p8` key → WeatherKit REST
-  (commercial use, same data as iOS). Open-Meteo stays as fallback. User sets up accounts/keys.
-- Alternatively confirm Open-Meteo non-commercial status by email (draft in iOS `API_INTEGRATIONS.md`).
+## A6 — Data source upgrade ✅ code (2026-11-20; keys/deploy are yours — `proxy/weatherkit-worker/README.md`)
+- Cloudflare Worker holding the WeatherKit `.p8` key → WeatherKit REST (ES256 JWT, 7 days, trimmed, ~1 km cache, no logs,
+  optional app key + rate limit; `node --test`).
+- App: Apple Weather first when `pofuduk.weatherkitProxyUrl` is set, Open-Meteo fallback with Apple cross-check of "now",
+  Apple Weather attribution (logo + legal link). Core: iOS builder/reconciler/cross-check ported with tests.
+- Open-Meteo stays as fallback (non-commercial confirmation still sensible, see RELEASE_CHECKLIST.md).
 
 ## A7 — Google Play release (prep ✅ 2026-11-20, store steps are yours — see RELEASE_CHECKLIST.md)
 - Done: release signing from `keystore.properties`, R8 release verified on the emulator, version 1.0.0, store icon +

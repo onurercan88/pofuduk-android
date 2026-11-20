@@ -31,7 +31,7 @@ Pofuduk, hava durumunu sana Türkçe anlatan sevimli bir bulut arkadaş.
 
 Pofuduk yalnızca gerçek tahmin verilerine dayanır ve resmi meteorolojik uyarıları kendi tahmininden asla üretmez; resmi uyarılar için MGM'nin sayfasına yönlendirir.
 
-Hava verisi: Open-Meteo.com (CC BY 4.0).
+Hava verisi: Apple Weather ve Open-Meteo.com (CC BY 4.0).
 
 ## Release notes (tr-TR) — 1.0.0
 Pofuduk Android'de! Konuşan hava durumu, yağmur bildirimleri, kıyafet önerileri ve seyahat havası.
@@ -48,7 +48,8 @@ Pofuduk Android'de! Konuşan hava durumu, yağmur bildirimleri, kıyafet öneril
 Regenerate: see RELEASE_CHECKLIST.md › "Store graphics".
 
 ## Data safety form (proposal — the user confirms when filling it in)
-Reasoning: the app has **no server, no account, no analytics, no ads SDK**. Everything below is sent by the app itself
+Reasoning: the app has **no account, no analytics, no ads SDK**, and no server that stores anything (the optional
+WeatherKit proxy only forwards rounded coordinates to Apple, without logs or storage). Everything below is sent by the app itself
 only to answer the user's request in real time.
 
 | Question | Answer |
@@ -56,7 +57,7 @@ only to answer the user's request in real time.
 | Does the app collect or share any of the required user data types? | **Yes** (conservative: approximate location leaves the device to fetch the forecast) |
 | Is all collected data encrypted in transit? | **Yes** (HTTPS only) |
 | Can users request that data be deleted? | **Yes** — in-app "Verilerimi sil" (no server-side data exists) |
-| Location › Approximate location | Collected: **yes**; Shared: **no** (Open-Meteo acts as the service that answers the request); Processed ephemerally: **yes**; Required: **no** (a city can be picked instead); Purpose: **App functionality** |
+| Location › Approximate location | Collected: **yes**; Shared: **no** (the proxy / Apple Weather / Open-Meteo act as service providers answering the request); Processed ephemerally: **yes**; Required: **no** (a city can be picked instead); Purpose: **App functionality** |
 | Location › Precise location | **Not collected** (only `ACCESS_COARSE_LOCATION`; fixes rounded to ~1 km) |
 | Audio / Voice | **Not collected by the app**: speech recognition is done by the device's recognition service (on-device when available); no audio leaves through the app |
 | Personal info, financial, health, messages, photos, contacts, app activity, web history, device IDs | **Not collected** |

@@ -70,6 +70,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pofuduk.app.AppClock
+import com.pofuduk.app.attribution.AppleWeatherAttribution
 import com.pofuduk.app.character.CharacterView
 import com.pofuduk.app.settings.SettingsDialog
 import com.pofuduk.app.settings.subtitleFontSize
@@ -494,7 +495,7 @@ private fun ScenarioPicker(selected: Scenario, onSelect: (Scenario?) -> Unit) {
     }
 }
 
-/** Source attribution (Open-Meteo CC BY 4.0 requires a visible credit) + demo switch. */
+/** Source attribution (Open-Meteo CC BY 4.0 and Apple Weather both require a visible credit) + demo switch. */
 @Composable
 private fun Footer(state: HomeUiState, onDemo: (Scenario?) -> Unit) {
     val palette = LocalPalette.current
@@ -507,7 +508,9 @@ private fun Footer(state: HomeUiState, onDemo: (Scenario?) -> Unit) {
                 Text("Kaynak: örnek veri — gerçek bir tahmin değil.", color = palette.inkSecondary, fontSize = 12.sp)
             } else {
                 Text("Tahmin: ${snapshot.source.attribution} · $time itibarıyla", color = palette.inkSecondary, fontSize = 12.sp)
-                if (snapshot.source == WeatherDataSource.OPEN_METEO) {
+                if (snapshot.source == WeatherDataSource.APPLE_WEATHER) {
+                    AppleWeatherAttribution(isPrimarySource = true, modifier = Modifier.padding(top = 4.dp))
+                } else if (snapshot.source == WeatherDataSource.OPEN_METEO) {
                     Text(
                         "Weather data by Open-Meteo.com (CC BY 4.0)",
                         color = palette.accent, fontSize = 12.sp, textDecoration = TextDecoration.Underline,
@@ -516,6 +519,9 @@ private fun Footer(state: HomeUiState, onDemo: (Scenario?) -> Unit) {
                             .clickable(role = Role.Button) { uri.openUri("https://open-meteo.com/") }
                             .padding(vertical = 14.dp),
                     )
+                }
+                if (snapshot.crossCheckSource == WeatherDataSource.APPLE_WEATHER) {
+                    AppleWeatherAttribution(isPrimarySource = false)
                 }
             }
         }
