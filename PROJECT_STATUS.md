@@ -87,5 +87,6 @@ Updated: 2026-11-20
 - [x] A6: WeatherKit proxy (`proxy/weatherkit-worker`, 9 Node tests) + Apple Weather provider/cross-check in core
       (25 tests), attribution UI; verified on the emulator against the Worker code with a fake Apple upstream
       (primary + fallback/cross-check paths)
-- [ ] A6 live: user creates the WeatherKit key / Services ID, deploys the Worker, sets `local.properties`; then check real data
+- [x] A6 live (2026-11-20): Services ID `com.pofuduk.weather`, WeatherKit key, Worker `pofuduk-weatherkit.pofuduk.workers.dev`
+      deployed with secrets; emulator shows live Apple Weather + attribution. Release bundles need `local.properties` set.
 - [ ] Open-Meteo non-commercial confirmation (shared with iOS) — still needed while it is the fallback

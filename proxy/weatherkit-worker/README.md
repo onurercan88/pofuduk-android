@@ -18,13 +18,18 @@ inside the APK. This Worker holds the key, signs the requests and returns a trim
    - Keys → **+** → enable **WeatherKit** → download `AuthKey_XXXXXXXXXX.p8` (only once; keep it outside the repo).
      The 10-character Key ID is `KEY_ID`.
    - Membership → Team ID (`TEAM_ID`). The Apple Developer Program includes 500,000 WeatherKit calls/month.
-2. **Cloudflare** (free plan): create an account, then in this folder:
+2. **Cloudflare** (free plan): create an account, then in this folder (if the browser login times out, use
+   `npx wrangler@4 login --device --scopes account:read user:read workers:write workers_scripts:write`):
    ```powershell
    npx wrangler@4 login
    npx wrangler@4 deploy
    ```
    The output shows the URL, e.g. `https://pofuduk-weatherkit.<account>.workers.dev`.
-3. **Secrets** (prompted, never written to a file):
+3. **Secrets** — easiest: `set-secrets.ps1` uploads all five (no values printed) and fills `local.properties`:
+   ```powershell
+   .\set-secrets.ps1 -TeamId <TEAM_ID> -KeyId <KEY_ID> -ServiceId com.pofuduk.weather -KeyFile C:\path\AuthKey_<KEY_ID>.p8 -ProxyUrl https://pofuduk-weatherkit.<account>.workers.dev
+   ```
+   Or one by one (prompted, never written to a file):
    ```powershell
    npx wrangler@4 secret put TEAM_ID
    npx wrangler@4 secret put KEY_ID
@@ -44,7 +49,7 @@ inside the APK. This Worker holds the key, signs the requests and returns a trim
    pofuduk.weatherkitProxyUrl=https://pofuduk-weatherkit.<account>.workers.dev
    pofuduk.weatherkitAppKey=<APP_KEY>
    ```
-   Without these the app uses Open-Meteo only (CI builds).
+   Without these the app uses Open-Meteo only (CI builds). (`set-secrets.ps1` already wrote them.)
 
 Optional: a custom domain for the Worker enables the edge cache; the rate limit (`[[ratelimits]]` in `wrangler.toml`,
 60 requests/min per IP) can be tuned there.
