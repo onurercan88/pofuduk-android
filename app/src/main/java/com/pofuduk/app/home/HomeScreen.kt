@@ -55,6 +55,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
@@ -70,6 +71,10 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pofuduk.app.character.CharacterView
 import com.pofuduk.app.settings.SettingsDialog
+import com.pofuduk.app.settings.subtitleFontSize
+import com.pofuduk.app.travel.TravelDialog
+import com.pofuduk.core.alert.ConfiguredMGMWarningProvider
+import com.pofuduk.core.alert.MGMOfficialPage
 import com.pofuduk.app.ui.theme.LocalPalette
 import com.pofuduk.app.ui.theme.PofudukTheme
 import com.pofuduk.app.ui.theme.backgroundGradient
@@ -153,6 +158,8 @@ fun HomeScreen(state: HomeUiState, viewModel: HomeViewModel) {
                         if (state.advice.isNotEmpty()) AdviceCard(state.advice)
                         state.clothing?.let { ClothingCard(it.items.map { i -> "${i.symbol} ${i.name}" }, it.summary) }
                         HourlyCard(state)
+                        EntryCard("🧳", "Seyahat Hava Durumu", "Gideceğin yerin havasını öğren", viewModel::openTravel)
+                        MGMStatusCard()
                     }
                 }
                 state.demoScenario?.let { ScenarioPicker(it, viewModel::setDemo) }
@@ -162,11 +169,13 @@ fun HomeScreen(state: HomeUiState, viewModel: HomeViewModel) {
         if (state.showSettings) {
             val notificationState by viewModel.notifications.state.collectAsStateWithLifecycle()
             SettingsDialog(
-                state = notificationState, coordinator = viewModel.notifications,
-                placeName = state.snapshot?.place?.displayName,
+                home = state, state = notificationState, viewModel = viewModel,
                 onChangePlace = { viewModel.closeSettings(); viewModel.openLocationPicker() },
                 onDismiss = viewModel::closeSettings,
             )
+        }
+        if (state.showTravel) {
+            TravelDialog(state.travel, viewModel, onDismiss = viewModel::closeTravel)
         }
         if (state.showLocationPicker) {
             LocationPickerDialog(
@@ -259,7 +268,8 @@ private fun SubtitleCard(state: HomeUiState) {
             }
         }
         Text(
-            text, color = palette.ink, fontSize = 20.sp, lineHeight = 28.sp, fontWeight = FontWeight.Medium,
+            text, color = palette.ink, fontSize = subtitleFontSize(state.preferences.subtitleSize),
+            lineHeight = subtitleFontSize(state.preferences.subtitleSize) * 1.4f, fontWeight = FontWeight.Medium,
             modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
         )
         if (track.sentences.size > 1) {
@@ -511,5 +521,36 @@ private fun Footer(state: HomeUiState, onDemo: (Scenario?) -> Unit) {
         TextButton(onClick = { onDemo(if (state.demoScenario == null) Scenario.SUNNY else null) }, modifier = Modifier.heightIn(min = 48.dp)) {
             Text(if (state.demoScenario == null) "Örnek verilerle göster" else "Canlı tahmine dön", color = palette.accent)
         }
+    }
+}
+
+/** Tappable card that opens a secondary screen. */
+@Composable
+private fun EntryCard(emoji: String, title: String, subtitle: String, onClick: () -> Unit) {
+    val palette = LocalPalette.current
+    HomeCard(Modifier.clickable(role = Role.Button, onClick = onClick)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(emoji, fontSize = 28.sp, modifier = Modifier.clearAndSetSemantics {}) // decorative
+            Column(Modifier.weight(1f)) {
+                Text(title, color = palette.ink, fontWeight = FontWeight.Bold)
+                Text(subtitle, color = palette.inkSecondary, fontSize = 13.sp)
+            }
+            Text("›", color = palette.inkSecondary, fontSize = 24.sp)
+        }
+    }
+}
+
+/** Official MGM status. Never shows a warning unless it came from an authorized official source (none yet). */
+@Composable
+private fun MGMStatusCard() {
+    val palette = LocalPalette.current
+    val uri = LocalUriHandler.current
+    HomeCard {
+        Text("🛡️ Resmi MGM uyarıları", color = palette.ink, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() })
+        Text(ConfiguredMGMWarningProvider.UNAVAILABLE_REASON, color = palette.inkSecondary, fontSize = 14.sp)
+        Text(
+            "Resmi uyarıları mgm.gov.tr'de kontrol et ↗", color = palette.accent, fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.heightIn(min = 48.dp).clickable(role = Role.Button) { uri.openUri(MGMOfficialPage.WARNINGS) }.padding(vertical = 14.dp),
+        )
     }
 }

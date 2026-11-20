@@ -22,11 +22,10 @@ subtitles and lip sync, Canvas character with accessories, weather effects and t
   > 30 min late. Hourly WorkManager refresh from the chosen/last coarsened place (no background location).
 - "Pofuduk Günaydın": morning greeting once per day (time presets/custom, auto-speak or text), optional notification; settings screen.
 
-## A5 — Settings, travel, polish
-- Settings: style, length, speech rate, voice, subtitle size, "Delete my data".
-- Travel weather screen; MGM official page link (authorized feed only if permission obtained).
-- Accessibility pass: TalkBack order/labels, font scale 200%, contrast audit, Remove animations.
-- Adaptive launcher icon final art, splash, store screenshots (demo data, fixed clock).
+## A5 — Settings, travel, polish ✅ (2026-11-20)
+- Settings (style, length, voice, speech rate, subtitle size, sources, privacy, "Verilerimi sil"), travel screen
+  (`core/TravelWeatherService`), MGM official page card, accessibility pass (200% font, labels, decorative emoji hidden).
+- Moved to A7: final launcher icon art, store screenshots (demo data, fixed clock).
 
 ## A6 — Data source upgrade (optional before release)
 - Small backend proxy (e.g. Cloudflare Worker) holding the WeatherKit `.p8` key → WeatherKit REST

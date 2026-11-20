@@ -10,7 +10,14 @@ import com.pofuduk.app.speech.SpeechListener
 import com.pofuduk.app.speech.SpeechRecognitionService
 import com.pofuduk.app.speech.SpeechService
 import com.pofuduk.core.conversation.ConversationManager
+import com.pofuduk.core.conversation.TravelWeatherService
 import com.pofuduk.core.conversation.WeatherQueryService
+import com.pofuduk.app.speech.VoiceOption
+import com.pofuduk.core.data.TurkishProvinces
+import com.pofuduk.core.conversation.WeatherQueryParser
+import com.pofuduk.core.engine.TravelSummary
+import java.time.LocalDate
+import java.time.ZoneId
 import com.pofuduk.core.mock.DemoWeatherRepository
 import com.pofuduk.core.engine.CharacterPersonalityEngine
 import com.pofuduk.core.engine.ClothingRecommendation
@@ -75,6 +82,10 @@ data class HomeUiState(
     val speechCue: SpokenWordCue? = null,
     val tapReaction: TapReactionPlayback? = null,
     val soundOn: Boolean = true,
+    /** Personalization (style, length, speech rate, voice, subtitle size), stored on device. */
+    val preferences: UserPreferences = UserPreferences(),
+    val showTravel: Boolean = false,
+    val travel: TravelUiState = TravelUiState(),
     /** null while TextToSpeech is starting. */
     val speechAvailable: Boolean? = null,
     val lastQuestion: String? = null,
@@ -113,7 +124,7 @@ data class HomeUiState(
  * → engines → speech. All wording comes from core; this class only wires it to speech and UI.
  */
 class HomeViewModel(application: Application) : AndroidViewModel(application), SpeechListener {
-    private val preferences = UserPreferences()
+    private val preferences get() = _state.value.preferences
     private val summary = WeatherSummaryEngine()
     private val clothingEngine = ClothingRecommendationEngine()
     private val conversation = ConversationManager()
@@ -135,10 +146,14 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
     private fun queryService(): WeatherQueryService =
         WeatherQueryService(_state.value.demoScenario?.let { DemoWeatherRepository(it) } ?: repository)
 
-    private val _state = MutableStateFlow(HomeUiState())
+    private val _state = MutableStateFlow(
+        HomeUiState(preferences = graph.userPreferences.load(), soundOn = graph.keyValue.getString(SOUND_KEY) != "0"),
+    )
     val state: StateFlow<HomeUiState> = _state.asStateFlow()
 
-    private val speech = SpeechService(application, this)
+    private val speech = SpeechService(application, this, _state.value.preferences.voiceName)
+    private val travelService get() = TravelWeatherService(_state.value.demoScenario?.let { DemoWeatherRepository(it) } ?: repository)
+    private var travelSearchJob: Job? = null
 
     init {
         load(autoSpeak = true)
@@ -311,6 +326,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
         val on = !_state.value.soundOn
         if (!on) speech.stop()
         _state.update { it.copy(soundOn = on) }
+        graph.keyValue.putString(SOUND_KEY, if (on) "1" else "0")
     }
 
     /** The field grows to 3 lines, so the Return key inserts "\n": treat it as "send" (like iOS). */
@@ -420,6 +436,101 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
         if (!spoken) _state.update { it.copy(track = it.track.showAllWithoutAudio()) }
     }
 
+    // Personalization
+
+    fun updatePreferences(change: (UserPreferences) -> UserPreferences) {
+        val old = _state.value.preferences
+        val new = change(old)
+        _state.update { it.copy(preferences = new) }
+        graph.userPreferences.save(new)
+        if (new.voiceName != old.voiceName) speech.setVoice(new.voiceName)
+    }
+
+    fun availableVoices(): List<VoiceOption> = speech.availableVoices()
+
+    fun previewVoice() = say(
+        Briefing(listOf("Merhaba! Ben Pofuduk. Havayı sana böyle anlatırım."), _state.value.restingMood, _state.value.theme),
+        question = null,
+    )
+
+    /** "Verilerimi sil": location choice, cached forecasts, notification + morning settings, personalization, context. */
+    fun deleteAllData() {
+        speech.stop()
+        notifications.reset()
+        location.reset()
+        graph.userPreferences.clear()
+        graph.keyValue.remove(SOUND_KEY)
+        conversation.reset()
+        speech.setVoice(null)
+        _state.update {
+            it.copy(
+                preferences = UserPreferences(), soundOn = true, showSettings = false, lastQuestion = null,
+                inputText = "", travel = TravelUiState(),
+            )
+        }
+        viewModelScope.launch {
+            graph.cache.removeAll()
+            load(autoSpeak = false, forceRefresh = true)
+        }
+    }
+
+    // Travel ("Seyahat Hava Durumu")
+
+    fun openTravel() = _state.update { it.copy(showTravel = true) }
+    fun closeTravel() = _state.update { it.copy(showTravel = false) }
+
+    /** Destination search: offline provinces first (also "Bursa'ya" style input), then the platform geocoder. */
+    fun travelQuery(text: String) {
+        _state.update { it.copy(travel = it.travel.copy(query = text, destination = null, summary = null, error = null)) }
+        travelSearchJob?.cancel()
+        if (text.trim().length < 2) {
+            _state.update { it.copy(travel = it.travel.copy(candidates = emptyList())) }
+            return
+        }
+        travelSearchJob = viewModelScope.launch {
+            delay(350)
+            val offline = (listOfNotNull(WeatherQueryParser().province(text)) + TurkishProvinces.search(text).take(5))
+                .distinct().map { it.place }
+            val online = location.search(text).filter { p -> offline.none { it.displayName == p.displayName } }
+            _state.update { it.copy(travel = it.travel.copy(candidates = (offline + online).take(12))) }
+        }
+    }
+
+    fun selectDestination(place: Place) = _state.update {
+        it.copy(travel = it.travel.copy(destination = place, query = place.displayName, candidates = emptyList(), summary = null))
+    }
+
+    fun setTravelDates(departure: LocalDate, returnDate: LocalDate?) = _state.update {
+        it.copy(travel = it.travel.copy(departure = departure, returnDate = returnDate?.takeIf { r -> !r.isBefore(departure) }, summary = null))
+    }
+
+    fun showTravelWeather() {
+        val t = _state.value.travel
+        val destination = t.destination ?: return
+        _state.update { it.copy(travel = it.travel.copy(isLoading = true, error = null)) }
+        viewModelScope.launch {
+            val zone = destination.timeZone
+            val result = travelService.summary(
+                destination, t.departure.atTime(12, 0).atZone(zone).toInstant(),
+                t.returnDate?.atTime(12, 0)?.atZone(zone)?.toInstant(), origin = _state.value.snapshot?.place,
+            )
+            _state.update {
+                when (result) {
+                    is TravelWeatherService.Result.Success -> it.copy(travel = it.travel.copy(isLoading = false, summary = result.summary))
+                    is TravelWeatherService.Result.Failure ->
+                        it.copy(travel = it.travel.copy(isLoading = false, summary = null, error = result.error.turkishExplanation))
+                }
+            }
+        }
+    }
+
+    /** "Pofuduk anlatsın": the travel summary through the same speech/subtitle pipeline. */
+    fun speakTravel() {
+        val summary = _state.value.travel.summary ?: return
+        _state.update { it.copy(showTravel = false) }
+        say(summary.briefing, question = null)
+    }
+
     // SpeechListener (binder thread → atomic StateFlow updates)
 
     override fun onReady(available: Boolean) {
@@ -466,5 +577,17 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
     private companion object {
         /** Timing only — never coordinates or place names. */
         const val TAG = "Pofuduk"
+        const val SOUND_KEY = "pofuduk.soundOn"
     }
 }
+
+data class TravelUiState(
+    val query: String = "",
+    val candidates: List<Place> = emptyList(),
+    val destination: Place? = null,
+    val departure: LocalDate = LocalDate.now(ZoneId.systemDefault()).plusDays(1),
+    val returnDate: LocalDate? = null,
+    val isLoading: Boolean = false,
+    val summary: TravelSummary? = null,
+    val error: String? = null,
+)

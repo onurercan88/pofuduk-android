@@ -2,7 +2,6 @@ package com.pofuduk.core.conversation
 
 import com.pofuduk.core.datetime.ForecastDateResolver
 import com.pofuduk.core.engine.CharacterPersonalityEngine
-import com.pofuduk.core.engine.TravelWeatherSummaryEngine
 import com.pofuduk.core.model.Briefing
 import com.pofuduk.core.model.CharacterMood
 import com.pofuduk.core.model.Place
@@ -25,7 +24,7 @@ class WeatherQueryService(
     private val now: () -> Instant = { Instant.now() },
 ) {
     private val answers = WeatherAnswerEngine()
-    private val travel = TravelWeatherSummaryEngine()
+    private val travel = TravelWeatherService(repository, now)
     private val personality = CharacterPersonalityEngine()
 
     suspend fun answer(query: ResolvedQuery, currentPlace: Place?): Briefing {
@@ -53,26 +52,11 @@ class WeatherQueryService(
             ),
             CharacterMood.THINKING, WeatherTheme.CLOUDY,
         )
-        return try {
-            val at = now()
-            val destinationSnapshot = repository.snapshot(destination, forceRefresh = false).copy(place = destination)
-            // The origin is optional context; its failure must not block the destination forecast.
-            val origin = currentPlace?.takeIf { it.coordinate != destination.coordinate }?.let {
-                try {
-                    repository.snapshot(it, forceRefresh = false)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    null
-                }
-            }
-            val zone = destination.timeZone
-            val days = ForecastDateResolver().days(query.date, at, zone).map { it.localDate(zone) }
-            withDemoNote(travel.summarize(destinationSnapshot, origin, days, at).briefing, destinationSnapshot)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            unavailable(e)
+        val zone = destination.timeZone
+        val days = ForecastDateResolver().days(query.date, now(), zone).map { it.localDate(zone) }
+        return when (val r = travel.summary(destination, days, currentPlace)) {
+            is TravelWeatherService.Result.Success -> r.summary.briefing
+            is TravelWeatherService.Result.Failure -> personality.unavailableBriefing(r.error.turkishExplanation)
         }
     }
 

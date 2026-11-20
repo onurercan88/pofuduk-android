@@ -80,14 +80,16 @@ class CachedWeatherRepository(
         val key = key(place)
         val cached = cache.load(key)
         val current = now()
-        if (!forceRefresh && cached != null && !cached.isStale(current)) return cached.copy(place = place)
+        // A cache entry "from the future" (device clock moved back) is never treated as fresh.
+        val fromFuture = cached != null && cached.retrievedAt.isAfter(current.plusSeconds(CLOCK_SKEW_SECONDS))
+        if (!forceRefresh && cached != null && !fromFuture && !cached.isStale(current)) return cached.copy(place = place)
         return try {
             val outcome = engine.fetch(place)
             cache.save(outcome.snapshot, key)
             outcome.snapshot
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
-            if (cached != null && current.secondsSince(cached.retrievedAt) < maxStaleAgeSeconds) {
+            if (cached != null && !fromFuture && current.secondsSince(cached.retrievedAt) < maxStaleAgeSeconds) {
                 cached.copy(place = place) // keeps provenance, shows the currently selected place name
             } else {
                 throw e
@@ -96,6 +98,9 @@ class CachedWeatherRepository(
     }
 
     companion object {
+        /** Tolerated difference between the clock that stored an entry and the current clock. */
+        const val CLOCK_SKEW_SECONDS = 5L * 60
+
         /** ~1 km grid so nearby requests share a cache entry. */
         fun key(place: Place): String =
             String.format(Locale.ROOT, "%.2f_%.2f", place.coordinate.latitude, place.coordinate.longitude)

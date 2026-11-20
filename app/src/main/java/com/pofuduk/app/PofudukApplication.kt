@@ -9,6 +9,7 @@ import com.pofuduk.app.location.LocationService
 import com.pofuduk.app.notifications.NotificationChannels
 import com.pofuduk.app.notifications.NotificationCoordinator
 import com.pofuduk.core.engine.WeatherProviderFallbackEngine
+import com.pofuduk.core.model.UserPreferencesStore
 import com.pofuduk.core.provider.OpenMeteoProvider
 import com.pofuduk.core.provider.UrlConnectionHttpClient
 import com.pofuduk.core.repository.CachedWeatherRepository
@@ -20,10 +21,12 @@ class AppGraph(context: Context) {
     private val app = context.applicationContext
     val keyValue = SharedPreferencesStore(app)
     val location = LocationService(DeviceLocationProvider(app), keyValue)
+    val cache = FileWeatherCacheStore(File(app.cacheDir, "forecasts"))
     val repository = CachedWeatherRepository(
         WeatherProviderFallbackEngine(listOf(OpenMeteoProvider(UrlConnectionHttpClient()))),
-        FileWeatherCacheStore(File(app.cacheDir, "forecasts")),
+        cache,
     )
+    val userPreferences = UserPreferencesStore(keyValue)
     val notifications = NotificationCoordinator(app, keyValue)
 }
 

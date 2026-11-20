@@ -23,8 +23,12 @@ interface SpeechListener {
  * `onRangeStart` (API 26) gives the word being spoken → subtitles and lip sync use the very strings spoken.
  * No timing estimates.
  */
-class SpeechService(context: Context, private val listener: SpeechListener) {
+/** An installed, offline Turkish voice the user can pick. */
+data class VoiceOption(val name: String, val label: String)
+
+class SpeechService(context: Context, private val listener: SpeechListener, preferredVoice: String? = null) {
     private val session = AtomicInteger(0)
+    @Volatile private var preferredVoice: String? = preferredVoice
     @Volatile private var ready = false
     @Volatile var isTurkishAvailable = false
         private set
@@ -39,7 +43,7 @@ class SpeechService(context: Context, private val listener: SpeechListener) {
         val turkish = Locale.forLanguageTag("tr-TR")
         val result = tts.setLanguage(turkish)
         isTurkishAvailable = result != TextToSpeech.LANG_MISSING_DATA && result != TextToSpeech.LANG_NOT_SUPPORTED
-        bestTurkishVoice()?.let { tts.voice = it }
+        applyVoice()
         tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String) {
                 parse(utteranceId)?.let { listener.onSentenceStart(it) }
@@ -68,12 +72,36 @@ class SpeechService(context: Context, private val listener: SpeechListener) {
         })
     }
 
-    /** Prefers an installed, offline, high-quality Turkish voice (no network voice → nothing leaves the device). */
-    private fun bestTurkishVoice(): Voice? = runCatching {
-        tts.voices
-            ?.filter { it.locale.language == "tr" && !it.isNetworkConnectionRequired && TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED !in it.features }
-            ?.maxByOrNull { it.quality }
-    }.getOrNull()
+    /** Installed, offline Turkish voices only (no network voice → nothing leaves the device). */
+    private fun turkishVoices(): List<Voice> = runCatching {
+        tts.voices.orEmpty().filter {
+            it.locale.language == "tr" && !it.isNetworkConnectionRequired && TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED !in it.features
+        }.sortedByDescending { it.quality }
+    }.getOrDefault(emptyList())
+
+    /** Voices for the settings picker ("Ses 1 · Çok iyi kalite"…; engine names are not user-friendly). */
+    fun availableVoices(): List<VoiceOption> {
+        if (!ready || !isTurkishAvailable) return emptyList()
+        return turkishVoices().mapIndexed { i, v ->
+            val quality = when {
+                v.quality >= Voice.QUALITY_VERY_HIGH -> "çok yüksek kalite"
+                v.quality >= Voice.QUALITY_HIGH -> "yüksek kalite"
+                else -> "normal kalite"
+            }
+            VoiceOption(v.name, "Ses ${i + 1} · $quality")
+        }
+    }
+
+    /** null = best installed Turkish voice. */
+    fun setVoice(name: String?) {
+        preferredVoice = name
+        if (ready) applyVoice()
+    }
+
+    private fun applyVoice() {
+        val voices = turkishVoices()
+        (voices.firstOrNull { it.name == preferredVoice } ?: voices.firstOrNull())?.let { tts.voice = it }
+    }
 
     /** Sentence index for utterances of the current session; null for stale or foreign utterances. */
     private fun parse(utteranceId: String): Int? {

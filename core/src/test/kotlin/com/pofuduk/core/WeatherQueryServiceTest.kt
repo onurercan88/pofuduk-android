@@ -82,3 +82,24 @@ class WeatherQueryServiceTest {
         assertEquals("Bu cevap örnek verilere dayanıyor.", b.sentences.last())
     }
 }
+
+class TravelWeatherServiceTest {
+    private val now = TestClock.date(10)
+    private val istanbul = TurkishProvinces.search("İstanbul")[0].place
+    private val bursa = TurkishProvinces.search("Bursa")[0].place
+
+    @Test fun dateRangeWithOriginAndPacking() = runTest {
+        val r = com.pofuduk.core.conversation.TravelWeatherService(RecordingRepository()) { now }
+            .summary(bursa, TestClock.date(9, day = 15), TestClock.date(9, day = 16), istanbul)
+        val s = kotlin.test.assertIs<com.pofuduk.core.conversation.TravelWeatherService.Result.Success>(r).summary
+        assertEquals(2, s.days.size)
+        assertTrue(s.days.all { it.originMaxTemperature != null })
+        assertTrue(s.packing.any { it.id == "umbrella" }, s.packing.toString())
+    }
+
+    @Test fun destinationFailureIsReported() = runTest {
+        val r = com.pofuduk.core.conversation.TravelWeatherService(RecordingRepository(failFor = "Bursa")) { now }
+            .summary(bursa, TestClock.date(9, day = 15), null, istanbul)
+        assertEquals(WeatherError.NETWORK, kotlin.test.assertIs<com.pofuduk.core.conversation.TravelWeatherService.Result.Failure>(r).error)
+    }
+}

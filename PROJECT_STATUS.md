@@ -53,7 +53,18 @@ Updated: 2026-11-20
       times on Android (`RainNotificationEngine(relativeTimes = false)`) because delivery may shift; "denied" note only after asking;
       Android wording for denied location (no IP option)
 
+## Done (Phase A5 — settings, travel, polish, 2026-11-20)
+- [x] Settings: style, length, Turkish voice picker (installed offline voices), speech rate, voice preview, subtitle size
+      (also scales with system font), location, sources (Open-Meteo, MGM), privacy note, "Verilerimi sil" (confirmed;
+      clears location, cache, notification/morning settings, personalization, context; cancels pending notifications), version
+- [x] Travel screen: destination search (provinces offline + geocoder, Turkey only), departure/return dates, comparison
+      with the current place, daily rows, packing list, "Pofuduk anlatsın"; `core/TravelWeatherService` + tests
+- [x] Home: travel entry card, MGM official-page card (no unofficial warnings), subtitle size applied
+- [x] Fix: cache entries dated in the future (device clock moved back) are never treated as fresh (+test) — core 159 tests
+- [x] Accessibility: 200% font checked on home (wraps, nothing clipped), labels via uiautomator, decorative emoji hidden
+
 ## Open
+- [ ] Travel abroad: Android Geocoder gives no time zone → Turkey-only search for now
 - [ ] Alarms are cleared by the system on reboot/force-stop; future ones come back with the next refresh, a due one in that gap is lost
 - [ ] Emulator location fix took ~20 s when the last fix was old; measure on a real phone (fused provider)
 - [ ] Voice recognition itself not verified (emulator has no Turkish language pack / host mic) — check on a real phone

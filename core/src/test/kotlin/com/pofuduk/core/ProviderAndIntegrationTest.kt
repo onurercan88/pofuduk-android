@@ -140,6 +140,22 @@ class FallbackAndCacheTest {
         assertEquals(WeatherError.NETWORK, assertFailsWith<WeatherException> { offline.snapshot(place, false) }.error)
     }
 
+    @Test fun cacheFromTheFutureIsNotFresh() = runTest {
+        // Stored when the device clock was 16 h ahead; the clock is now back to normal.
+        val cache = InMemoryWeatherCacheStore()
+        val future = now.plusSeconds(16 * 3600)
+        CachedWeatherRepository(WeatherProviderFallbackEngine(listOf(openMeteo(StubHttpClient(Fixtures.OPEN_METEO), future))), cache, now = { future })
+            .snapshot(place, false)
+        val http = StubHttpClient(Fixtures.OPEN_METEO)
+        val snap = CachedWeatherRepository(WeatherProviderFallbackEngine(listOf(openMeteo(http, now))), cache, now = { now }).snapshot(place, false)
+        assertEquals(1, http.requestedUrls.size, "Must refetch")
+        assertEquals(now, snap.retrievedAt)
+        // Offline: a future-dated entry is not offered as a stale fallback either.
+        val offline = CachedWeatherRepository(WeatherProviderFallbackEngine(listOf(openMeteo(StubHttpClient(error = networkError), now))),
+            InMemoryWeatherCacheStore().also { c -> c.save(snap.copy(retrievedAt = future), CachedWeatherRepository.key(place)) }, now = { now })
+        assertEquals(WeatherError.NETWORK, assertFailsWith<WeatherException> { offline.snapshot(place, false) }.error)
+    }
+
     @Test fun fileCacheRoundTrip() = runTest {
         val dir = Files.createTempDirectory("pofuduk-cache").toFile()
         val store = FileWeatherCacheStore(dir)

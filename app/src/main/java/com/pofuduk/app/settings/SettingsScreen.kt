@@ -50,7 +50,21 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.pofuduk.app.notifications.NotificationCoordinator
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.semantics.contentDescription
+import com.pofuduk.app.home.HomeUiState
+import com.pofuduk.app.home.HomeViewModel
+import com.pofuduk.core.alert.MGMOfficialPage
+import com.pofuduk.core.model.BriefingLength
+import com.pofuduk.core.model.PersonalityStyle
+import com.pofuduk.core.model.SubtitleSize
+import com.pofuduk.core.model.UserPreferences
+import kotlin.math.roundToInt
 import com.pofuduk.app.notifications.NotificationState
 import com.pofuduk.app.ui.theme.LocalPalette
 import com.pofuduk.core.datetime.TurkishFormatting
@@ -65,12 +79,24 @@ private val configurable = listOf(
 
 private fun hhmm(minute: Int) = String.format(Locale.ROOT, "%02d.%02d", minute / 60, minute % 60)
 
-/** Pofuduk Günaydın + weather notification settings. Honest about Android's background limits. */
+/** Central settings: personalization, voice, subtitles, morning briefing, notifications, sources, privacy. On device only. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun SettingsDialog(state: NotificationState, coordinator: NotificationCoordinator, placeName: String?, onChangePlace: () -> Unit, onDismiss: () -> Unit) {
+fun SettingsDialog(
+    home: HomeUiState,
+    state: NotificationState,
+    viewModel: HomeViewModel,
+    onChangePlace: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val coordinator = viewModel.notifications
+    val placeName = home.snapshot?.place?.displayName
+    val user = home.preferences
     val palette = LocalPalette.current
     val context = LocalContext.current
+    val uri = LocalUriHandler.current
+    var confirmDelete by remember { mutableStateOf(false) }
+    val voices = remember(home.speechAvailable) { viewModel.availableVoices() }
     // What to do once the notification permission prompt (Android 13+) is answered.
     var afterPermission by remember { mutableStateOf<(() -> Unit)?>(null) }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
@@ -114,6 +140,59 @@ fun SettingsDialog(state: NotificationState, coordinator: NotificationCoordinato
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("Ayarlar", color = palette.ink, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f).semantics { heading() })
                 TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) { Text("Kapat", color = palette.accent) }
+            }
+
+            Section("Pofuduk") {
+                Text("Konuşma tarzı", color = palette.ink, fontWeight = FontWeight.SemiBold)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    PersonalityStyle.entries.forEach { s -> Chip(s.turkishName, user.style == s) { viewModel.updatePreferences { it.copy(style = s) } } }
+                }
+                Text("Anlatım", color = palette.ink, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    BriefingLength.entries.forEach { l -> Chip(l.turkishName, user.briefingLength == l) { viewModel.updatePreferences { it.copy(briefingLength = l) } } }
+                }
+                Note("Tarz yalnızca selamlamayı ve kapanışı değiştirir; hava bilgileri her zaman aynıdır. Fırtınada Pofuduk şaka yapmaz.")
+            }
+
+            Section("Ses") {
+                SwitchRow("Ses", home.soundOn) { viewModel.toggleSound() }
+                if (voices.isEmpty()) {
+                    Note("Türkçe ses yüklü değil. Android ayarlarında Metin okuma (TTS) bölümünden Türkçe sesi indirebilirsin. O zamana kadar altyazılar gösterilir.")
+                } else {
+                    Text("Türkçe ses", color = palette.ink, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Chip("Otomatik (en iyi)", user.voiceName == null) { viewModel.updatePreferences { it.copy(voiceName = null) } }
+                        voices.forEach { v -> Chip(v.label, user.voiceName == v.name) { viewModel.updatePreferences { it.copy(voiceName = v.name) } } }
+                    }
+                }
+                Text("Konuşma hızı: ${rateName(user.clampedSpeechRate)}", color = palette.ink, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
+                Slider(
+                    value = user.clampedSpeechRate.toFloat(),
+                    onValueChange = { v -> viewModel.updatePreferences { it.copy(speechRateMultiplier = (v * 20).roundToInt() / 20.0) } },
+                    valueRange = UserPreferences.SPEECH_RATE_MIN.toFloat()..UserPreferences.SPEECH_RATE_MAX.toFloat(),
+                    steps = 8,
+                    colors = SliderDefaults.colors(thumbColor = palette.accent, activeTrackColor = palette.accent),
+                    modifier = Modifier.semantics { contentDescription = "Konuşma hızı" },
+                )
+                OutlinedButton(
+                    onClick = viewModel::previewVoice, enabled = home.soundOn && home.speechAvailable == true,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) { Text("Sesi dene", color = palette.ink) }
+            }
+
+            Section("Altyazılar") {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SubtitleSize.entries.forEach { s -> Chip(s.turkishName, user.subtitleSize == s) { viewModel.updatePreferences { it.copy(subtitleSize = s) } } }
+                }
+                Text("Pofuduk böyle konuşur.", color = palette.ink, fontSize = subtitleFontSize(user.subtitleSize), lineHeight = subtitleFontSize(user.subtitleSize) * 1.35f)
+                Note("Altyazılar her zaman açıktır ve Android yazı boyutu ayarıyla birlikte büyür.")
+            }
+
+            Section("Konum") {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Text(placeName ?: "Seçilmedi", color = palette.ink, modifier = Modifier.weight(1f))
+                    TextButton(onClick = onChangePlace, modifier = Modifier.heightIn(min = 48.dp)) { Text("Değiştir", color = palette.accent) }
+                }
             }
 
             Section("Pofuduk Günaydın") {
@@ -202,8 +281,73 @@ fun SettingsDialog(state: NotificationState, coordinator: NotificationCoordinato
                         "bildirim çok gecikirse gönderilmez. Arka planda konum istenmez: seçtiğin şehir ya da son konumun (~1 km) kullanılır.",
                 )
             }
+
+            Section("Birimler ve dil") {
+                Note("Sıcaklık: Santigrat (°C) · Rüzgâr: km/sa · Dil: Türkçe")
+            }
+
+            Section("Veri kaynakları") {
+                LinkRow("Hava verisi: Open-Meteo.com (CC BY 4.0)") { uri.openUri("https://open-meteo.com/") }
+                LinkRow("Resmi uyarılar: MGM (mgm.gov.tr)") { uri.openUri(MGMOfficialPage.WARNINGS) }
+                Note("Pofuduk'un hava tahminleri resmi uyarı değildir.")
+            }
+
+            Section("Gizlilik") {
+                Note(
+                    "Konumun yalnızca uygulama açıkken ve sadece hava durumu için kullanılır; takip edilmez, satılmaz, paylaşılmaz. " +
+                        "Mikrofon yalnızca sen düğmeye bastığında açılır. Tüm tercihler bu cihazda saklanır; hesap gerekmez.",
+                )
+                OutlinedButton(onClick = { confirmDelete = true }, modifier = Modifier.heightIn(min = 48.dp)) {
+                    Text("Verilerimi sil", color = Color(0xFFD32F2F))
+                }
+            }
+
+            Section("Hakkında") {
+                Note("Sürüm ${versionName(context)} · Pofuduk, hava durumunu Türkçe anlatan sevimli bir bulut arkadaş.")
+            }
         }
     }
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Tüm verilerin silinsin mi?") },
+            text = {
+                Text(
+                    "Kayıtlı konum, önbellekteki tahminler, bildirim ve günaydın ayarları, kişiselleştirme ve sohbet geçmişi silinir. " +
+                        "Bekleyen bildirimler iptal edilir.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { confirmDelete = false; viewModel.deleteAllData() }) { Text("Verilerimi sil", color = Color(0xFFD32F2F)) }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Vazgeç") } },
+        )
+    }
+}
+
+private fun rateName(rate: Double): String = when {
+    rate < 0.95 -> "yavaş"
+    rate > 1.05 -> "hızlı"
+    else -> "normal"
+}
+
+private fun versionName(context: android.content.Context): String =
+    runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "-"
+
+/** Subtitle font size per setting (also scales with the system font size, since it is in sp). */
+fun subtitleFontSize(size: SubtitleSize) = when (size) {
+    SubtitleSize.STANDARD -> 20.sp
+    SubtitleSize.LARGE -> 24.sp
+    SubtitleSize.EXTRA_LARGE -> 28.sp
+    SubtitleSize.HUGE -> 34.sp
+}
+
+@Composable
+private fun LinkRow(text: String, onClick: () -> Unit) {
+    Text(
+        text, color = LocalPalette.current.accent, fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(role = Role.Button, onClick = onClick).padding(vertical = 14.dp),
+    )
 }
 
 @Composable
