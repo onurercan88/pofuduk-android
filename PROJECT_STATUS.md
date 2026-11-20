@@ -18,7 +18,20 @@ Updated: 2026-11-20
       sentence + word highlight and lip sync confirmed — `docs/screenshots/`
 - [x] GitHub https://github.com/onurercan88/pofuduk-android (public) + CI (`:core:test` + `:app:assembleDebug`)
 
+## Done (Phase A2 — live forecast + location, 2026-11-20)
+- [x] Live Open-Meteo via `CachedWeatherRepository` (file cache in `cacheDir`, 30 min fresh, offline ≤ 6 h labelled "Güncel olmayabilir")
+- [x] Location: Pofuduk's explanation before the system prompt; `ACCESS_COARSE_LOCATION` only, foreground only, no Play Services;
+      fused → network → GPS with 8 s per provider, last fix ≤ 15 min (≤ 2 h as last resort); fix coarsened to 2 decimals before use
+- [x] Reverse geocoding (platform Geocoder, tr-TR) with offline nearest-province fallback (`TurkishProvinces.nearest`, tested)
+- [x] Picker: 81 provinces offline + district search (Geocoder, Turkey bounding box); header opens it
+- [x] States: loading / failed (retry, choose city) / needs location (allow, settings, choose city); pull-to-refresh;
+      Open-Meteo attribution + retrieval time in footer; demo mode kept behind "Örnek verilerle göster"
+- [x] Emulator verified: explanation → approximate-location prompt → Kadıköy, İstanbul live briefing (location 77 ms, forecast 1.1 s);
+      Alanya search → Antalya forecast spoken — `docs/screenshots/`
+- [x] core tests: 146 passing (+1 opt-in live skipped)
+
 ## Open
+- [ ] Not tested by hand yet: offline/failed screen, denied-permission → settings → resume path, Android 8–11 (requestSingleUpdate path)
 - [ ] Cold start on the emulator took several seconds right after boot (Play updates running); measure on a real device in A2
 - [ ] If the TTS engine restarts mid-briefing (e.g. engine update), speech stops and subtitles stay on the last sentence — consider rebinding/retry
 - [ ] Phases A2–A7 (ROADMAP.md)

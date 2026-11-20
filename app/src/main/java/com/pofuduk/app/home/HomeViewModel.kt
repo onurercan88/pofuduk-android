@@ -1,7 +1,12 @@
 package com.pofuduk.app.home
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.pofuduk.app.data.SharedPreferencesStore
+import com.pofuduk.app.location.DeviceLocationProvider
+import com.pofuduk.app.location.LocationService
 import com.pofuduk.app.speech.SpeechListener
 import com.pofuduk.app.speech.SpeechService
 import com.pofuduk.core.conversation.ConversationManager
@@ -10,36 +15,67 @@ import com.pofuduk.core.engine.CharacterPersonalityEngine
 import com.pofuduk.core.engine.ClothingRecommendation
 import com.pofuduk.core.engine.ClothingRecommendationEngine
 import com.pofuduk.core.engine.WeatherAnalysis
+import com.pofuduk.core.engine.WeatherProviderFallbackEngine
 import com.pofuduk.core.engine.WeatherSummaryEngine
 import com.pofuduk.core.mock.MockWeatherData
 import com.pofuduk.core.model.Briefing
 import com.pofuduk.core.model.CharacterAppearance
 import com.pofuduk.core.model.CharacterMood
+import com.pofuduk.core.model.LocationIssue
+import com.pofuduk.core.model.LocationPermission
+import com.pofuduk.core.model.LocationResolution
 import com.pofuduk.core.model.LocationSource
+import com.pofuduk.core.model.Place
 import com.pofuduk.core.model.TapReaction
 import com.pofuduk.core.model.TapReactionPlayback
 import com.pofuduk.core.model.UserPreferences
 import com.pofuduk.core.model.WeatherSnapshot
+import com.pofuduk.core.model.WeatherTheme
+import com.pofuduk.core.provider.OpenMeteoProvider
+import com.pofuduk.core.provider.UrlConnectionHttpClient
+import com.pofuduk.core.provider.WeatherError
+import com.pofuduk.core.provider.WeatherException
+import com.pofuduk.core.repository.CachedWeatherRepository
+import com.pofuduk.core.repository.FileWeatherCacheStore
+import com.pofuduk.core.speech.PlaybackStatus
 import com.pofuduk.core.speech.SpokenWordCue
 import com.pofuduk.core.speech.SubtitleTrack
 import com.pofuduk.core.speech.TextRange
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import java.io.File
 import java.time.Instant
 
+sealed interface LocationPrompt {
+    data object Explanation : LocationPrompt
+    data class Issue(val issue: LocationIssue) : LocationPrompt
+}
+
+sealed interface LoadState {
+    data object Loading : LoadState
+    data object Loaded : LoadState
+    data class Failed(val reason: String) : LoadState
+    data class NeedsLocation(val prompt: LocationPrompt) : LoadState
+}
+
 data class HomeUiState(
-    val scenario: MockWeatherData.Scenario,
-    val snapshot: WeatherSnapshot,
-    val analysis: WeatherAnalysis,
-    val clothing: ClothingRecommendation?,
+    val loadState: LoadState = LoadState.Loading,
+    /** Non-null = labelled demo mode with built-in sample data. */
+    val demoScenario: MockWeatherData.Scenario? = null,
+    val snapshot: WeatherSnapshot? = null,
+    val analysis: WeatherAnalysis? = null,
+    val clothing: ClothingRecommendation? = null,
     /** Advice bullets of the briefing (kept while answers are spoken). */
-    val advice: List<String>,
-    /** What is being (or was last) said: the briefing or an answer. */
-    val message: Briefing,
-    val track: SubtitleTrack,
-    val restingMood: CharacterMood,
+    val advice: List<String> = emptyList(),
+    /** What is being (or was last) said: the briefing, an answer or a status message. */
+    val message: Briefing = Briefing(emptyList(), CharacterMood.THINKING, WeatherTheme.CLOUDY),
+    val track: SubtitleTrack = SubtitleTrack(),
+    val restingMood: CharacterMood = CharacterMood.THINKING,
     val isSpeaking: Boolean = false,
     val speechCue: SpokenWordCue? = null,
     val tapReaction: TapReactionPlayback? = null,
@@ -47,19 +83,30 @@ data class HomeUiState(
     /** null while TextToSpeech is starting. */
     val speechAvailable: Boolean? = null,
     val lastQuestion: String? = null,
+    val isRefreshing: Boolean = false,
+    val showLocationPicker: Boolean = false,
+    val searchResults: List<Place> = emptyList(),
 ) {
+    val theme: WeatherTheme get() = analysis?.theme ?: WeatherTheme.CLOUDY
+
     val appearance: CharacterAppearance
-        get() = CharacterAppearance(
-            mood = if (isSpeaking) CharacterMood.SPEAKING else restingMood,
-            theme = analysis.theme,
-            speechCue = speechCue,
-            tapReaction = tapReaction,
-        )
+        get() {
+            val mood = when {
+                isSpeaking -> CharacterMood.SPEAKING
+                loadState is LoadState.Loading -> CharacterMood.THINKING
+                loadState is LoadState.Failed -> CharacterMood.ERROR
+                loadState is LoadState.NeedsLocation -> CharacterMood.LISTENING
+                else -> restingMood
+            }
+            return CharacterAppearance(mood, theme, speechCue = speechCue, tapReaction = tapReaction)
+        }
+
+    val isStale: Boolean get() = snapshot?.isStale(Instant.now()) == true
 }
 
 /**
- * Home screen state. Phase 1: built-in, clearly labelled demo data (no network, no location).
- * All wording comes from the core engines; this class only wires them to speech and UI.
+ * Home screen state machine: location (explanation before any system prompt) → forecast (Open-Meteo, cached)
+ * → engines → speech. All wording comes from core; this class only wires it to speech and UI.
  */
 class HomeViewModel(application: Application) : AndroidViewModel(application), SpeechListener {
     private val preferences = UserPreferences()
@@ -67,41 +114,163 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
     private val clothingEngine = ClothingRecommendationEngine()
     private val answers = WeatherAnswerEngine()
     private val conversation = ConversationManager()
-    private var tapCount = 0
-    private var autoSpoken = false
+    private val personality get() = CharacterPersonalityEngine(preferences.style, preferences.briefingLength)
 
-    private val _state = MutableStateFlow(build(MockWeatherData.Scenario.SUNNY))
+    private val location = LocationService(DeviceLocationProvider(application), SharedPreferencesStore(application))
+    private val repository = CachedWeatherRepository(
+        WeatherProviderFallbackEngine(listOf(OpenMeteoProvider(UrlConnectionHttpClient()))),
+        FileWeatherCacheStore(File(application.cacheDir, "forecasts")),
+    )
+
+    private var tapCount = 0
+    private var pendingAutoSpeak = false
+    private var loadJob: Job? = null
+    private var searchJob: Job? = null
+
+    private val _state = MutableStateFlow(HomeUiState())
     val state: StateFlow<HomeUiState> = _state.asStateFlow()
 
     private val speech = SpeechService(application, this)
 
-    private fun build(scenario: MockWeatherData.Scenario, previous: HomeUiState? = null): HomeUiState {
-        val now = Instant.now()
-        val snapshot = MockWeatherData.snapshot(scenario, now)
-        val analysis = summary.analyze(snapshot, now)
-        val clothing = clothingEngine.recommend(snapshot, now = now)
-        val briefing = CharacterPersonalityEngine(preferences.style, preferences.briefingLength).briefing(analysis, clothing = clothing)
-        return HomeUiState(
-            scenario = scenario, snapshot = snapshot, analysis = analysis, clothing = clothing, advice = briefing.advice,
-            message = briefing, track = SubtitleTrack.load(briefing.sentences).showAllWithoutAudio(),
-            restingMood = briefing.restingMood,
-            soundOn = previous?.soundOn ?: true, speechAvailable = previous?.speechAvailable,
-        )
+    init {
+        load(autoSpeak = true)
+    }
+
+    // Loading
+
+    private fun load(autoSpeak: Boolean, forceRefresh: Boolean = false) {
+        loadJob?.cancel()
+        speech.stop()
+        loadJob = viewModelScope.launch {
+            _state.update { it.copy(loadState = LoadState.Loading, isSpeaking = false, speechCue = null, track = SubtitleTrack()) }
+            val demo = _state.value.demoScenario
+            val started = System.currentTimeMillis()
+            val place: Place = if (demo != null) {
+                MockWeatherData.istanbul
+            } else {
+                when (val r = location.resolve().also { Log.d(TAG, "location: ${System.currentTimeMillis() - started} ms") }) {
+                    is LocationResolution.Resolved -> r.place
+                    LocationResolution.NeedsPermissionExplanation -> return@launch enterNeedsLocation(LocationPrompt.Explanation)
+                    is LocationResolution.NeedsUserChoice -> return@launch enterNeedsLocation(LocationPrompt.Issue(r.issue))
+                }
+            }
+            val now = Instant.now()
+            val snapshot = try {
+                if (demo != null) MockWeatherData.snapshot(demo, now, place) else repository.snapshot(place, forceRefresh)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val reason = ((e as? WeatherException)?.error ?: WeatherError.NETWORK).turkishExplanation
+                val briefing = personality.unavailableBriefing(reason)
+                _state.update {
+                    it.copy(
+                        loadState = LoadState.Failed(reason), snapshot = null, analysis = null, clothing = null, advice = emptyList(),
+                        message = briefing, track = SubtitleTrack.load(briefing.sentences).showAllWithoutAudio(),
+                        restingMood = briefing.restingMood, isRefreshing = false, lastQuestion = null,
+                    )
+                }
+                return@launch
+            }
+            Log.d(TAG, "forecast ready: ${System.currentTimeMillis() - started} ms (${snapshot.source})")
+            val analysis = summary.analyze(snapshot, now)
+            val clothing = clothingEngine.recommend(snapshot, now = now)
+            val briefing = personality.briefing(analysis, clothing = clothing)
+            _state.update {
+                it.copy(
+                    loadState = LoadState.Loaded, snapshot = snapshot, analysis = analysis, clothing = clothing,
+                    advice = briefing.advice, message = briefing,
+                    track = SubtitleTrack.load(briefing.sentences).showAllWithoutAudio(),
+                    restingMood = briefing.restingMood, isRefreshing = false, lastQuestion = null,
+                )
+            }
+            if (autoSpeak) speakWhenReady(briefing)
+        }
+    }
+
+    /** No weather is shown or spoken until the user decides how to share their location. */
+    private fun enterNeedsLocation(prompt: LocationPrompt) {
+        val briefing = personality.locationNeededBriefing()
+        _state.update {
+            it.copy(
+                loadState = LoadState.NeedsLocation(prompt), snapshot = null, analysis = null, clothing = null, advice = emptyList(),
+                message = briefing, track = SubtitleTrack.load(briefing.sentences).showAllWithoutAudio(),
+                restingMood = briefing.restingMood, isRefreshing = false,
+            )
+        }
+    }
+
+    private fun speakWhenReady(briefing: Briefing) {
+        when (_state.value.speechAvailable) {
+            null -> pendingAutoSpeak = true
+            true -> say(briefing, question = null)
+            false -> Unit // text is already shown
+        }
     }
 
     // User actions
 
-    fun selectScenario(scenario: MockWeatherData.Scenario) {
-        speech.stop()
-        conversation.reset()
-        _state.value = build(scenario, _state.value)
+    /** Pull to refresh / retry: an explicit request → Pofuduk tells the updated weather. */
+    fun refresh() {
+        _state.update { it.copy(isRefreshing = true) }
+        load(autoSpeak = true, forceRefresh = true)
     }
 
-    /** Re-analyses the (demo) forecast at the current time and speaks the briefing. */
+    /** Called with the result of the system prompt, which is shown only after Pofuduk's explanation. */
+    fun onPermissionResult() {
+        location.permissionAnswered()
+        _state.update { it.copy(showLocationPicker = false) }
+        conversation.reset()
+        load(autoSpeak = true)
+    }
+
+    fun selectPlace(place: Place) {
+        location.selectManual(place)
+        conversation.reset()
+        _state.update { it.copy(showLocationPicker = false, searchResults = emptyList()) }
+        load(autoSpeak = true, forceRefresh = true)
+    }
+
+    fun openLocationPicker() = _state.update { it.copy(showLocationPicker = true, searchResults = emptyList()) }
+    fun closeLocationPicker() = _state.update { it.copy(showLocationPicker = false, searchResults = emptyList()) }
+
+    /** District/city search (debounced by the caller's typing; previous search is cancelled). */
+    fun search(query: String) {
+        searchJob?.cancel()
+        if (query.trim().length < 2) {
+            _state.update { it.copy(searchResults = emptyList()) }
+            return
+        }
+        searchJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(350)
+            val results = location.search(query)
+            _state.update { it.copy(searchResults = results) }
+        }
+    }
+
+    /** Back from system settings: permission or location services may have changed. */
+    fun onResume() {
+        val s = _state.value.loadState
+        if (s is LoadState.NeedsLocation && s.prompt is LocationPrompt.Issue &&
+            location.permission == LocationPermission.AUTHORIZED
+        ) {
+            load(autoSpeak = true)
+        }
+    }
+
+    fun setDemo(scenario: MockWeatherData.Scenario?) {
+        conversation.reset()
+        _state.update { it.copy(demoScenario = scenario, lastQuestion = null) }
+        load(autoSpeak = true)
+    }
+
     fun playBriefing() {
-        val fresh = build(_state.value.scenario, _state.value)
-        _state.value = fresh
-        say(fresh.message, question = null)
+        val s = _state.value
+        if (s.loadState == LoadState.Loaded && s.analysis != null) {
+            val briefing = personality.briefing(summary.analyze(s.snapshot!!, Instant.now()), clothing = s.clothing)
+            say(briefing, question = null)
+        } else {
+            say(s.message.copy(), question = null)
+        }
     }
 
     fun stop() = speech.stop()
@@ -112,23 +281,40 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
         _state.update { it.copy(soundOn = on) }
     }
 
-    /** Typed question (voice input arrives in a later phase). */
+    /** Typed question (voice input arrives in Phase A3). */
     fun ask(text: String) {
         val question = text.trim()
         if (question.isEmpty()) return
+        val current = _state.value
+        val snapshot = current.snapshot
+        if (snapshot == null) {
+            say(personality.locationNeededBriefing(), question)
+            return
+        }
         val now = Instant.now()
         val query = conversation.interpret(question, now)
-        val current = _state.value
-        // Another province: demo data for that place (still labelled "Örnek veri" in the UI).
-        val snapshot = query.province?.let { MockWeatherData.snapshot(current.scenario, now, it.place.copy(source = LocationSource.DEMO)) }
-            ?: current.snapshot
-        say(answers.answer(query, snapshot, now), question)
+        viewModelScope.launch {
+            val target = query.province?.place
+            val forPlace = when {
+                target == null -> snapshot
+                current.demoScenario != null -> MockWeatherData.snapshot(current.demoScenario, now, target.copy(source = LocationSource.DEMO))
+                else -> try {
+                    repository.snapshot(target, forceRefresh = false)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    val reason = ((e as? WeatherException)?.error ?: WeatherError.NETWORK).turkishExplanation
+                    return@launch say(personality.unavailableBriefing(reason), question)
+                }
+            }
+            say(answers.answer(query, forPlace, now), question)
+        }
     }
 
     fun onCharacterTap() {
         val s = _state.value
-        if (s.isSpeaking) return
-        val reaction = TapReaction.choose(s.analysis.theme, s.restingMood)
+        if (s.isSpeaking || s.loadState != LoadState.Loaded) return
+        val reaction = TapReaction.choose(s.theme, s.restingMood)
         val laugh = TapReaction.laugh(tapCount++)
         _state.update { it.copy(tapReaction = TapReactionPlayback(reaction, laugh, Instant.now())) }
         if (s.soundOn) speech.speakAside(laugh, preferences.clampedSpeechRate)
@@ -136,9 +322,12 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
 
     private fun say(message: Briefing, question: String?) {
         val s = _state.value
-        val track = SubtitleTrack.load(message.sentences)
         _state.update {
-            it.copy(message = message, track = track, restingMood = message.restingMood, lastQuestion = question, speechCue = null, isSpeaking = false)
+            it.copy(
+                message = message, track = SubtitleTrack.load(message.sentences),
+                restingMood = if (it.loadState == LoadState.Loaded) message.restingMood else it.restingMood,
+                lastQuestion = question, speechCue = null, isSpeaking = false,
+            )
         }
         val spoken = s.soundOn && speech.speak(message.sentences, preferences.clampedSpeechRate)
         if (!spoken) _state.update { it.copy(track = it.track.showAllWithoutAudio()) }
@@ -148,9 +337,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
 
     override fun onReady(available: Boolean) {
         _state.update { it.copy(speechAvailable = available) }
-        if (available && !autoSpoken) {
-            autoSpoken = true
-            playBriefing()
+        if (pendingAutoSpeak) {
+            pendingAutoSpeak = false
+            val s = _state.value
+            if (available && s.loadState == LoadState.Loaded) say(s.message, question = null)
         }
     }
 
@@ -172,7 +362,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
     override fun onSentenceDone(index: Int) {
         _state.update {
             val track = it.track.didFinish(index)
-            val finished = track.status == com.pofuduk.core.speech.PlaybackStatus.FINISHED
+            val finished = track.status == PlaybackStatus.FINISHED
             it.copy(track = track, isSpeaking = !finished && it.isSpeaking, speechCue = if (finished) null else it.speechCue)
         }
     }
@@ -183,5 +373,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
 
     override fun onCleared() {
         speech.shutdown()
+    }
+
+    private companion object {
+        /** Timing only — never coordinates or place names. */
+        const val TAG = "Pofuduk"
     }
 }

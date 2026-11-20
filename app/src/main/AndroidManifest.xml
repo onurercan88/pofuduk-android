@@ -1,8 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Phase 1 runs on built-in demo data only: no permissions at all.
-         INTERNET / location / microphone / notifications are added with their phases (see ROADMAP.md). -->
+    <!-- Forecast download (Open-Meteo). -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Approximate location only, foreground only; asked after Pofuduk's explanation. No FINE, no BACKGROUND. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-feature android:name="android.hardware.location" android:required="false" />
+    <!-- Microphone / notifications are added with their phases (see ROADMAP.md). -->
 
     <!-- Android 11+: lets the app see the installed TextToSpeech engine. -->
     <queries>

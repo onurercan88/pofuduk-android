@@ -1,7 +1,12 @@
 package com.pofuduk.app.home
 
+import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -29,6 +34,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.OutlinedButton
@@ -36,17 +42,20 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -54,6 +63,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -63,11 +73,13 @@ import com.pofuduk.app.ui.theme.PofudukTheme
 import com.pofuduk.app.ui.theme.backgroundGradient
 import com.pofuduk.core.datetime.TurkishFormatting
 import com.pofuduk.core.mock.MockWeatherData.Scenario
+import com.pofuduk.core.model.WeatherDataSource
 import com.pofuduk.core.model.WeatherTheme
 import com.pofuduk.core.speech.PlaybackStatus
 import com.pofuduk.core.util.capitalizedFirstTurkish
 import com.pofuduk.core.util.startOfHour
 import java.time.Instant
+import java.time.ZoneId
 
 private val Scenario.turkishName: String
     get() = when (this) {
@@ -79,13 +91,32 @@ private val Scenario.turkishName: String
         Scenario.WINDY -> "Rüzgârlı"
     }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(state: HomeUiState, viewModel: HomeViewModel) {
-    val theme = state.analysis.theme
+    val context = LocalContext.current
+    // The system prompt is shown only from Pofuduk's own explanation (or the picker's "Konumumu kullan").
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { viewModel.onPermissionResult() }
+    val askLocation = { permission.launch(Manifest.permission.ACCESS_COARSE_LOCATION) }
+    val openSettings = { servicesOff: Boolean ->
+        val intent = if (servicesOff) {
+            Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
+        } else {
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
+        }
+        try {
+            context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (_: ActivityNotFoundException) {
+        }
+    }
+
+    val theme = state.theme
     PofudukTheme(forceDark = theme == WeatherTheme.NIGHT) {
         val palette = LocalPalette.current
-        Box(
-            Modifier
+        PullToRefreshBox(
+            isRefreshing = state.isRefreshing,
+            onRefresh = viewModel::refresh,
+            modifier = Modifier
                 .fillMaxSize()
                 .background(Brush.verticalGradient(backgroundGradient(theme, palette.isDark))),
         ) {
@@ -98,61 +129,83 @@ fun HomeScreen(state: HomeUiState, viewModel: HomeViewModel) {
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Header(state, onToggleSound = viewModel::toggleSound)
+                Header(state, onToggleSound = viewModel::toggleSound, onChangePlace = viewModel::openLocationPicker)
                 CharacterView(
                     state.appearance,
-                    Modifier.clickable(onClickLabel = "Pofuduk'a dokun") { viewModel.onCharacterTap() },
+                    Modifier.clickable(onClickLabel = "Pofuduk'a dokun", role = Role.Button) { viewModel.onCharacterTap() },
                 )
                 SubtitleCard(state)
-                SpeechControls(state, onPlay = viewModel::playBriefing, onStop = viewModel::stop)
-                AskBar(state.lastQuestion, onAsk = viewModel::ask)
-                NowCard(state)
-                if (state.advice.isNotEmpty()) AdviceCard(state.advice)
-                state.clothing?.let { ClothingCard(it.items.map { i -> "${i.symbol} ${i.name}" }, it.summary) }
-                HourlyCard(state)
-                ScenarioPicker(state.scenario, viewModel::selectScenario)
-                Text(
-                    "Kaynak: örnek veri — gerçek bir tahmin değil. Canlı tahmin (Open-Meteo) sonraki fazda.",
-                    color = palette.inkSecondary, fontSize = 12.sp,
-                    modifier = Modifier.padding(bottom = 16.dp),
-                )
+                when (val load = state.loadState) {
+                    is LoadState.NeedsLocation -> LocationPromptCard(load.prompt, askLocation, openSettings, viewModel::openLocationPicker)
+                    is LoadState.Failed -> FailedCard(load.reason, viewModel::refresh, viewModel::openLocationPicker)
+                    LoadState.Loading -> Text("Hava durumuna bakıyorum…", color = palette.inkSecondary)
+                    LoadState.Loaded -> {
+                        SpeechControls(state, onPlay = viewModel::playBriefing, onStop = viewModel::stop)
+                        AskBar(state.lastQuestion, onAsk = viewModel::ask)
+                        NowCard(state)
+                        if (state.advice.isNotEmpty()) AdviceCard(state.advice)
+                        state.clothing?.let { ClothingCard(it.items.map { i -> "${i.symbol} ${i.name}" }, it.summary) }
+                        HourlyCard(state)
+                    }
+                }
+                state.demoScenario?.let { ScenarioPicker(it, viewModel::setDemo) }
+                Footer(state, onDemo = viewModel::setDemo)
             }
+        }
+        if (state.showLocationPicker) {
+            LocationPickerDialog(
+                results = state.searchResults,
+                onSearch = viewModel::search,
+                onSelect = viewModel::selectPlace,
+                onUseDevice = askLocation,
+                onDismiss = viewModel::closeLocationPicker,
+            )
         }
     }
 }
 
 @Composable
-private fun Header(state: HomeUiState, onToggleSound: () -> Unit) {
+private fun Header(state: HomeUiState, onToggleSound: () -> Unit, onChangePlace: () -> Unit) {
     val palette = LocalPalette.current
-    val zone = state.snapshot.place.timeZone
+    val place = state.snapshot?.place
+    val zone = place?.timeZone ?: ZoneId.systemDefault()
+    val canChange = state.demoScenario == null
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
+        Column(
+            Modifier
+                .weight(1f)
+                .then(if (canChange) Modifier.clickable(onClickLabel = "Konumu değiştir", onClick = onChangePlace) else Modifier),
+        ) {
             Text(
-                state.snapshot.place.displayName, color = palette.ink, fontSize = 22.sp, fontWeight = FontWeight.Bold,
+                (place?.displayName ?: "Pofuduk") + if (canChange) " ▾" else "",
+                color = palette.ink, fontSize = 22.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.semantics { heading() },
             )
             Text(TurkishFormatting.longDate(Instant.now(), zone), color = palette.inkSecondary, fontSize = 14.sp)
-            Text(
-                "Örnek veri",
-                color = palette.inkInverse, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-                modifier = Modifier
-                    .padding(top = 4.dp)
-                    .background(palette.accent, RoundedCornerShape(50))
-                    .padding(horizontal = 10.dp, vertical = 3.dp),
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
+                if (state.demoScenario != null) Badge("Örnek veri")
+                if (state.isStale) Badge("Güncel olmayabilir")
+            }
         }
-        OutlinedButton(
-            onClick = onToggleSound,
-            modifier = Modifier.heightIn(min = 48.dp),
-            border = BorderStroke(1.dp, palette.accent),
-        ) {
+        OutlinedButton(onClick = onToggleSound, modifier = Modifier.heightIn(min = 48.dp), border = BorderStroke(1.dp, palette.accent)) {
             Text(if (state.soundOn) "🔊 Ses açık" else "🔇 Ses kapalı", color = palette.ink)
         }
     }
 }
 
 @Composable
-private fun Card(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+private fun Badge(text: String) {
+    val palette = LocalPalette.current
+    Text(
+        text, color = palette.inkInverse, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+        modifier = Modifier
+            .background(palette.accent, RoundedCornerShape(50))
+            .padding(horizontal = 10.dp, vertical = 3.dp),
+    )
+}
+
+@Composable
+fun HomeCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     val palette = LocalPalette.current
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -170,9 +223,10 @@ private fun SubtitleCard(state: HomeUiState) {
     val palette = LocalPalette.current
     val track = state.track
     var showAll by rememberSaveable { mutableStateOf(false) }
-    Card {
+    if (track.sentences.isEmpty()) return
+    HomeCard {
         state.lastQuestion?.let { Text("Sen: “$it”", color = palette.inkSecondary, fontSize = 14.sp) }
-        val sentence = track.currentSentence ?: track.sentences.firstOrNull().orEmpty()
+        val sentence = track.currentSentence ?: track.sentences.first()
         val range = track.wordRange
         val text = buildAnnotatedString {
             if (range != null && range.location + range.length <= sentence.length) {
@@ -207,16 +261,14 @@ private fun SubtitleCard(state: HomeUiState) {
 private fun SpeechControls(state: HomeUiState, onPlay: () -> Unit, onStop: () -> Unit) {
     val palette = LocalPalette.current
     val context = LocalContext.current
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-        val speaking = state.isSpeaking || state.track.status == PlaybackStatus.SPEAKING
-        Button(
-            onClick = if (speaking) onStop else onPlay,
-            modifier = Modifier.heightIn(min = 48.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = palette.accent, contentColor = palette.inkInverse),
-        ) { Text(if (speaking) "⏹ Durdur" else "▶ Havayı anlat", fontSize = 16.sp) }
-    }
+    val speaking = state.isSpeaking || state.track.status == PlaybackStatus.SPEAKING
+    Button(
+        onClick = if (speaking) onStop else onPlay,
+        modifier = Modifier.heightIn(min = 48.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = palette.accent, contentColor = palette.inkInverse),
+    ) { Text(if (speaking) "⏹ Durdur" else "▶ Havayı anlat", fontSize = 16.sp) }
     if (state.speechAvailable == false) {
-        Card {
+        HomeCard {
             Text("Bu cihazda Türkçe ses bulunamadı; söylediklerimi yazı olarak gösteriyorum.", color = palette.ink)
             Text(
                 "Ses ayarlarını aç",
@@ -273,20 +325,19 @@ private fun AskBar(lastQuestion: String?, onAsk: (String) -> Unit) {
 @Composable
 private fun NowCard(state: HomeUiState) {
     val palette = LocalPalette.current
-    val c = state.snapshot.current
-    val a = state.analysis
-    Card {
+    val c = state.snapshot?.current ?: return
+    val a = state.analysis ?: return
+    HomeCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(TurkishFormatting.shortTemperature(c.temperature), color = palette.ink, fontSize = 56.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.width(16.dp))
             Column {
                 Text(TurkishFormatting.conditionName(c.condition, c.isDay).capitalizedFirstTurkish(), color = palette.ink, fontSize = 18.sp)
                 Text("Hissedilen ${TurkishFormatting.shortTemperature(c.feelsLike)}", color = palette.inkSecondary)
-                if (a.minTemperature != null && a.maxTemperature != null) {
-                    Text(
-                        "En düşük ${TurkishFormatting.shortTemperature(a.minTemperature!!)} · En yüksek ${TurkishFormatting.shortTemperature(a.maxTemperature!!)}",
-                        color = palette.inkSecondary,
-                    )
+                val lo = a.minTemperature
+                val hi = a.maxTemperature
+                if (lo != null && hi != null) {
+                    Text("En düşük ${TurkishFormatting.shortTemperature(lo)} · En yüksek ${TurkishFormatting.shortTemperature(hi)}", color = palette.inkSecondary)
                 }
             }
         }
@@ -301,7 +352,7 @@ private fun NowCard(state: HomeUiState) {
 @Composable
 private fun AdviceCard(advice: List<String>) {
     val palette = LocalPalette.current
-    Card {
+    HomeCard {
         Text("Pofuduk'un önerileri", color = palette.ink, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() })
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             advice.forEach {
@@ -320,7 +371,7 @@ private fun AdviceCard(advice: List<String>) {
 @Composable
 private fun ClothingCard(items: List<String>, summary: String) {
     val palette = LocalPalette.current
-    Card {
+    HomeCard {
         Text("Ne giysem?", color = palette.ink, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() })
         Text(summary, color = palette.ink, fontSize = 15.sp)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -339,21 +390,18 @@ private fun ClothingCard(items: List<String>, summary: String) {
 @Composable
 private fun HourlyCard(state: HomeUiState) {
     val palette = LocalPalette.current
-    val zone = state.snapshot.place.timeZone
+    val snapshot = state.snapshot ?: return
+    val zone = snapshot.place.timeZone
     val from = Instant.now().startOfHour(zone)
-    val hours = state.snapshot.hourly.filter { !it.time.isBefore(from) }.take(12)
+    val hours = snapshot.hourly.filter { !it.time.isBefore(from) }.take(12)
     if (hours.isEmpty()) return
-    Card {
+    HomeCard {
         Text("Saatlik", color = palette.ink, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() })
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             hours.forEach { h ->
-                val label = TurkishFormatting.clockTime(h.time, zone)
                 val rain = h.precipitationProbability?.takeIf { it >= 30 }
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.semantics(mergeDescendants = true) {},
-                ) {
-                    Text(label, color = palette.inkSecondary, fontSize = 13.sp)
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.semantics(mergeDescendants = true) {}) {
+                    Text(TurkishFormatting.clockTime(h.time, zone), color = palette.inkSecondary, fontSize = 13.sp)
                     Text(TurkishFormatting.shortTemperature(h.temperature), color = palette.ink, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
                     Text(rain?.let { "☔ %$it" } ?: " ", color = palette.accent, fontSize = 12.sp)
                 }
@@ -364,9 +412,9 @@ private fun HourlyCard(state: HomeUiState) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ScenarioPicker(selected: Scenario, onSelect: (Scenario) -> Unit) {
+private fun ScenarioPicker(selected: Scenario, onSelect: (Scenario?) -> Unit) {
     val palette = LocalPalette.current
-    Card {
+    HomeCard {
         Text("Örnek hava (demo)", color = palette.ink, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() })
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Scenario.entries.forEach { s ->
@@ -380,6 +428,37 @@ private fun ScenarioPicker(selected: Scenario, onSelect: (Scenario) -> Unit) {
                     ),
                 )
             }
+        }
+    }
+}
+
+/** Source attribution (Open-Meteo CC BY 4.0 requires a visible credit) + demo switch. */
+@Composable
+private fun Footer(state: HomeUiState, onDemo: (Scenario?) -> Unit) {
+    val palette = LocalPalette.current
+    val uri = LocalUriHandler.current
+    val snapshot = state.snapshot
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(bottom = 16.dp)) {
+        if (snapshot != null) {
+            val time = TurkishFormatting.clockTime(snapshot.retrievedAt, snapshot.place.timeZone)
+            if (snapshot.source == WeatherDataSource.DEMO) {
+                Text("Kaynak: örnek veri — gerçek bir tahmin değil.", color = palette.inkSecondary, fontSize = 12.sp)
+            } else {
+                Text("Tahmin: ${snapshot.source.attribution} · $time itibarıyla", color = palette.inkSecondary, fontSize = 12.sp)
+                if (snapshot.source == WeatherDataSource.OPEN_METEO) {
+                    Text(
+                        "Weather data by Open-Meteo.com (CC BY 4.0)",
+                        color = palette.accent, fontSize = 12.sp, textDecoration = TextDecoration.Underline,
+                        modifier = Modifier
+                            .heightIn(min = 48.dp)
+                            .clickable(role = Role.Button) { uri.openUri("https://open-meteo.com/") }
+                            .padding(vertical = 14.dp),
+                    )
+                }
+            }
+        }
+        TextButton(onClick = { onDemo(if (state.demoScenario == null) Scenario.SUNNY else null) }, modifier = Modifier.heightIn(min = 48.dp)) {
+            Text(if (state.demoScenario == null) "Örnek verilerle göster" else "Canlı tahmine dön", color = palette.accent)
         }
     }
 }

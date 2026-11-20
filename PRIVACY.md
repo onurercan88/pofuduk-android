@@ -4,12 +4,14 @@ Same principles as iOS: **no accounts, no ads, no analytics, no data collection,
 
 | Data | When | Why | Stored | Shared |
 |---|---|---|---|---|
-| Location (coarse first, precise optional) | Only in the foreground when a forecast is needed, after Pofuduk's explanation (Phase A2) | Local forecast | Last selected place, coarsened to ~1 km (2 decimals) | Rounded coordinates to the weather provider only |
+| Approximate location (`ACCESS_COARSE_LOCATION` only) | Only in the foreground when a forecast is needed, after Pofuduk's explanation | Local forecast | Last place, coarsened to ~1 km (2 decimals) | Coordinates rounded to 2 decimals (~1 km) to Open-Meteo and to the platform geocoder (place name) |
+| Place search text | Only while the user types in the picker (≥ 2 letters) | District search | Not stored | The platform geocoder (Google on most devices); the 81 provinces work offline |
 | Microphone / speech | Only while the mic button is held (Phase A3) | Voice questions | Not stored; offline recognition preferred | Google's recognizer only when offline recognition is unavailable (user is told) |
 | Notifications | Only if enabled (Phase A4) | Rain/warning/morning alerts | Preferences + delivery log on device | None |
 | Preferences, cached forecasts | Always | App function | On device (SharedPreferences, cache dir) | None |
 
-- Phase A1 (current): demo data only, **no permissions requested**, no network access.
+- Permissions today: `INTERNET`, `ACCESS_COARSE_LOCATION` (asked only after the explanation; picking a city works without it).
+- Logs contain timings only — never coordinates or place names.
 - No background location, no continuous microphone.
 - Cloud backup and device transfer are disabled for all app data (`data_extraction_rules.xml`).
 - TextToSpeech: an installed offline Turkish voice is preferred; network voices are not selected.

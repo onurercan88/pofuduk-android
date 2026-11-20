@@ -22,6 +22,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        viewModel.onResume()
+    }
+
     override fun onStop() {
         super.onStop()
         // Never keep talking in the background.

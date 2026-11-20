@@ -3,6 +3,11 @@ package com.pofuduk.core.data
 import com.pofuduk.core.model.Coordinate
 import com.pofuduk.core.model.LocationSource
 import com.pofuduk.core.model.Place
+import kotlin.math.asin
+import kotlin.math.cos
+import kotlin.math.pow
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 /**
  * Offline list of Turkey's 81 provinces (plate code, name, approximate city-centre coordinate).
@@ -23,6 +28,24 @@ object TurkishProvinces {
         val q = normalize(query)
         if (q.isEmpty()) return all
         return all.filter { normalize(it.name).contains(q) || it.plate.toString() == q }
+    }
+
+    /**
+     * Offline fallback when reverse geocoding is unavailable: the province whose centre is closest to
+     * [coordinate], or null when none is within [maxDistanceKm] (e.g. abroad).
+     */
+    fun nearest(coordinate: Coordinate, maxDistanceKm: Double = 200.0): Province? =
+        all.map { it to distanceKm(coordinate, it.coordinate) }
+            .filter { it.second <= maxDistanceKm }
+            .minByOrNull { it.second }?.first
+
+    /** Great-circle distance (haversine). */
+    fun distanceKm(a: Coordinate, b: Coordinate): Double {
+        val r = 6371.0
+        val dLat = Math.toRadians(b.latitude - a.latitude)
+        val dLon = Math.toRadians(b.longitude - a.longitude)
+        val h = sin(dLat / 2).pow(2) + cos(Math.toRadians(a.latitude)) * cos(Math.toRadians(b.latitude)) * sin(dLon / 2).pow(2)
+        return 2 * r * asin(sqrt(h))
     }
 
     private val foldMap = mapOf(

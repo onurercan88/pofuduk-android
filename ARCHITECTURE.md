@@ -18,7 +18,9 @@ core/      Pure Kotlin/JVM library (no Android imports). Port of iOS PofudukCore
   mock/           MockWeatherData — previews, tests, labelled demo mode only
 app/       Android app (Jetpack Compose, single activity, MVVM)
   speech/         SpeechService — TextToSpeech tr-TR adapter
-  home/           HomeViewModel (StateFlow) + HomeScreen
+  location/       DeviceLocationProvider (LocationManager + Geocoder, coarse only) + LocationService (core policy)
+  data/           SharedPreferencesStore (KeyValueStore)
+  home/           HomeViewModel (load state machine, StateFlow) + HomeScreen + LocationViews
   character/      CharacterView, CharacterFigure, WeatherEffects (Compose Canvas)
   ui/theme/       Palette (light/dark/night), gradients
 ```

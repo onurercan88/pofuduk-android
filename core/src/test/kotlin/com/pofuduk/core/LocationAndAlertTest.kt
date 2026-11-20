@@ -135,6 +135,14 @@ class TurkishProvincesTest {
         assertEquals("Iğdır", TurkishProvinces.search("IĞDIR").firstOrNull()?.name)
         assertEquals("İzmir", TurkishProvinces.search("35").firstOrNull()?.name)
     }
+
+    @Test fun nearestProvinceOffline() {
+        assertEquals("İstanbul", TurkishProvinces.nearest(Coordinate(40.99, 29.03))?.name) // Kadıköy
+        assertEquals("Antalya", TurkishProvinces.nearest(Coordinate(36.55, 31.99))?.name) // Alanya
+        assertEquals(null, TurkishProvinces.nearest(Coordinate(51.5, -0.12)), "Abroad → no province")
+        val d = TurkishProvinces.distanceKm(Coordinate(41.01, 28.98), Coordinate(39.93, 32.86))
+        assertTrue(d in 340.0..360.0, "İstanbul–Ankara ≈ 350 km, was $d")
+    }
 }
 
 class MGMWarningTest {

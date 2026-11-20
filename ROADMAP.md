@@ -7,12 +7,10 @@ Each phase ends with `:core:test` green, `:app:assembleDebug` building and, wher
 Gradle multi-module, `core` port with tests, Compose home on labelled demo data, TTS with sentence/word-synced
 subtitles and lip sync, Canvas character with accessories, weather effects and tap reactions, dark/night theme.
 
-## A2 — Live forecast + location
-- `INTERNET`; `OpenMeteoProvider` + `CachedWeatherRepository` (file cache in `cacheDir`), stale/offline labelling.
-- Location: explanation screen before the system prompt, `ACCESS_COARSE_LOCATION` first (precise optional),
-  foreground only, coordinates coarsened (~1 km) before any request; `LocationResolver` policy from core.
-- Manual city picker (81 provinces, offline) + district search (geocoding provider to be chosen).
-- Pull-to-refresh, error/unavailable states, attribution footer (Open-Meteo CC BY 4.0).
+## A2 — Live forecast + location ✅ (2026-11-20)
+- Open-Meteo + file cache, stale/offline labelling; coarse-only foreground location after Pofuduk's explanation,
+  coarsened to ~1 km before use; province picker + district search (platform Geocoder); pull-to-refresh, error states,
+  attribution footer. Precise location is intentionally not requested (weather needs ~1 km).
 
 ## A3 — Voice questions
 - `RECORD_AUDIO` only while the mic button is held; `SpeechRecognizer` tr-TR, prefer offline; listening mood.
