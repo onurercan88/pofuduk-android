@@ -9,7 +9,7 @@
 | Countries | Yalnızca Türkiye |
 | Default language | Türkçe (tr-TR) |
 | Contact e-mail | *(user's support address — entered in Play Console)* |
-| Privacy policy URL | `https://onurercan88.github.io/pofuduk-android/gizlilik.html` (after GitHub Pages is enabled, see RELEASE_CHECKLIST.md) |
+| Privacy policy URL | https://onurercan88.github.io/pofuduk-android/gizlilik.html (live since 2026-11-20, GitHub Pages from `docs/`) |
 | Graphics | `docs/store/icon-512.png`, `docs/store/feature-1024x500.png`, `docs/store/screenshots/*.png` (1080×1920) |
 
 ## Short description (max 80)

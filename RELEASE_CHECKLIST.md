@@ -22,7 +22,7 @@ scripts\gradle.cmd :core:test :app:bundleRelease
 Output: `app\build\outputs\bundle\release\app-release.aab` (R8 on; ~3.6 MB bundle, ~1.5 MB install).
 Before every release: bump `versionCode` (+1) and `versionName` in `app/build.gradle.kts`.
 
-## 3. Privacy policy page (you approve publishing)
+## 3. Privacy policy page ✅ published 2026-11-20
 `docs/gizlilik.html` + `docs/index.html` → GitHub Pages from `main` / `docs`:
 ```powershell
 gh api -X POST repos/onurercan88/pofuduk-android/pages -f "source[branch]=main" -f "source[path]=/docs"

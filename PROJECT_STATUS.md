@@ -73,7 +73,8 @@ Updated: 2026-11-20
       overwritten by the pending auto-briefing; location asks all providers at once (10 s budget instead of up to 24 s)
 
 ## Open
-- [ ] (you) Upload keystore, Play Console account/app, GitHub Pages for the privacy page, closed test (12 testers / 14 days)
+- [x] Privacy policy live: https://onurercan88.github.io/pofuduk-android/gizlilik.html (GitHub Pages, `docs/`)
+- [ ] (you) Upload keystore, Play Console account/app, closed test (12 testers / 14 days)
 - [ ] Travel abroad: Android Geocoder gives no time zone → Turkey-only search for now
 - [ ] Alarms are cleared by the system on reboot/force-stop; future ones come back with the next refresh, a due one in that gap is lost
 - [ ] Emulator location fix took ~20 s when the last fix was old; measure on a real phone (fused provider)
