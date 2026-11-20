@@ -12,3 +12,6 @@ captures/
 *.keystore
 keystore.properties
 /screenshots/local/
+
+# Signing / API keys (never commit)
+*.p8

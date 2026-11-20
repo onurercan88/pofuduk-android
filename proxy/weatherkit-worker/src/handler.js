@@ -19,7 +19,9 @@ const json = (status, body, extra = {}) =>
 async function token(env, nowSeconds) {
   if (cachedToken && cachedToken.exp - 300 > nowSeconds) return cachedToken.value;
   if (!cachedKey || cachedKey.pem !== env.PRIVATE_KEY) cachedKey = { pem: env.PRIVATE_KEY, key: await importPrivateKey(env.PRIVATE_KEY) };
-  const value = await signToken({ teamId: env.TEAM_ID, keyId: env.KEY_ID, serviceId: env.SERVICE_ID, key: cachedKey.key, nowSeconds });
+  const value = await signToken({
+    teamId: env.TEAM_ID.trim(), keyId: env.KEY_ID.trim(), serviceId: env.SERVICE_ID.trim(), key: cachedKey.key, nowSeconds,
+  });
   cachedToken = { value, exp: nowSeconds + 3600 };
   return value;
 }
@@ -34,7 +36,7 @@ function remember(key, body, ttl, nowMs) {
 
 export async function handle(request, env, ctx, now = () => Date.now()) {
   if (request.method !== "GET") return json(405, { error: "method_not_allowed" }, { allow: "GET" });
-  if (env.APP_KEY && !safeEqual(request.headers.get("x-pofuduk-key") ?? "", env.APP_KEY)) {
+  if (env.APP_KEY && !safeEqual(request.headers.get("x-pofuduk-key") ?? "", env.APP_KEY.trim())) {
     return json(401, { error: "unauthorized" });
   }
   if (env.LIMITER) {
