@@ -12,7 +12,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -56,6 +55,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -98,6 +98,11 @@ fun HomeScreen(state: HomeUiState, viewModel: HomeViewModel) {
     // The system prompt is shown only from Pofuduk's own explanation (or the picker's "Konumumu kullan").
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { viewModel.onPermissionResult() }
     val askLocation = { permission.launch(Manifest.permission.ACCESS_COARSE_LOCATION) }
+    // Microphone permission only when the user taps the mic (and never for typed questions).
+    val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) viewModel.startListening() else viewModel.microphoneDenied()
+    }
+    val onMic = { viewModel.toggleListening { micPermission.launch(Manifest.permission.RECORD_AUDIO) } }
     val openSettings = { servicesOff: Boolean ->
         val intent = if (servicesOff) {
             Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
@@ -141,7 +146,7 @@ fun HomeScreen(state: HomeUiState, viewModel: HomeViewModel) {
                     LoadState.Loading -> Text("Hava durumuna bakıyorum…", color = palette.inkSecondary)
                     LoadState.Loaded -> {
                         SpeechControls(state, onPlay = viewModel::playBriefing, onStop = viewModel::stop)
-                        AskBar(state.lastQuestion, onAsk = viewModel::ask)
+                        AskBar(state, onInput = viewModel::onInputChange, onSend = viewModel::send, onMic = onMic, onSuggestion = viewModel::ask)
                         NowCard(state)
                         if (state.advice.isNotEmpty()) AdviceCard(state.advice)
                         state.clothing?.let { ClothingCard(it.items.map { i -> "${i.symbol} ${i.name}" }, it.summary) }
@@ -287,40 +292,72 @@ private fun SpeechControls(state: HomeUiState, onPlay: () -> Unit, onStop: () ->
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun AskBar(lastQuestion: String?, onAsk: (String) -> Unit) {
+private fun AskBar(state: HomeUiState, onInput: (String) -> Unit, onSend: () -> Unit, onMic: () -> Unit, onSuggestion: (String) -> Unit) {
     val palette = LocalPalette.current
-    var text by rememberSaveable { mutableStateOf("") }
-    val submit = {
-        onAsk(text)
-        text = ""
-    }
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedTextField(
-            value = text,
-            onValueChange = { text = it },
-            modifier = Modifier.weight(1f),
-            singleLine = true,
-            placeholder = { Text(if (lastQuestion == null) "Örn. “Akşam yağmur var mı?”" else "Başka bir soru…") },
-            label = { Text("Pofuduk'a sor") },
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-            keyboardActions = KeyboardActions(onSend = { submit() }),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = palette.ink, unfocusedTextColor = palette.ink,
-                focusedContainerColor = palette.surfaceStrong, unfocusedContainerColor = palette.surface,
-                focusedBorderColor = palette.accent, focusedLabelColor = palette.accent,
-                unfocusedLabelColor = palette.inkSecondary, unfocusedPlaceholderColor = palette.inkSecondary,
-                focusedPlaceholderColor = palette.inkSecondary,
-            ),
-        )
-        Button(
-            onClick = submit,
-            enabled = text.isNotBlank(),
-            modifier = Modifier.heightIn(min = 48.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = palette.accent, contentColor = palette.inkInverse),
-        ) { Text("Sor") }
+    val text = state.inputText
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        state.microphoneMessage?.let {
+            Text(it, color = palette.inkSecondary, fontSize = 13.sp, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+        }
+        if (text.isEmpty() && !state.isListening) {
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SUGGESTIONS.forEach { s ->
+                    Text(
+                        s, color = palette.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .background(palette.surface, RoundedCornerShape(50))
+                            .heightIn(min = 48.dp)
+                            .clickable(role = Role.Button) { onSuggestion(s) }
+                            .padding(horizontal = 14.dp, vertical = 14.dp),
+                    )
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(
+                value = text,
+                onValueChange = onInput,
+                modifier = Modifier.weight(1f),
+                maxLines = 3,
+                placeholder = { Text(if (state.isListening) "Dinliyorum…" else "Örn. “Akşam yağmur var mı?”") },
+                label = { Text(if (state.isListening) "Dinliyorum…" else "Pofuduk'a sor") },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                keyboardActions = KeyboardActions(onSend = { onSend() }),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = palette.ink, unfocusedTextColor = palette.ink,
+                    focusedContainerColor = palette.surfaceStrong, unfocusedContainerColor = palette.surface,
+                    focusedBorderColor = palette.accent, unfocusedBorderColor = if (state.isListening) palette.accent else palette.inkSecondary,
+                    focusedLabelColor = palette.accent,
+                    unfocusedLabelColor = palette.inkSecondary, unfocusedPlaceholderColor = palette.inkSecondary,
+                    focusedPlaceholderColor = palette.inkSecondary,
+                ),
+            )
+            val micColors = if (state.isListening) {
+                ButtonDefaults.buttonColors(containerColor = palette.accent, contentColor = palette.inkInverse)
+            } else {
+                ButtonDefaults.buttonColors(containerColor = palette.surfaceStrong, contentColor = palette.ink)
+            }
+            Button(
+                onClick = onMic, colors = micColors,
+                modifier = Modifier.heightIn(min = 48.dp).semantics {
+                    contentDescription = if (state.isListening) "Dinlemeyi bitir" else "Sesli sor"
+                },
+            ) { Text(if (state.isListening) "⏹" else "🎤", fontSize = 18.sp) }
+            if (text.isNotBlank() && !state.isListening) {
+                Button(
+                    onClick = onSend,
+                    enabled = !state.isThinking,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = palette.accent, contentColor = palette.inkInverse),
+                ) { Text("Sor") }
+            }
+        }
     }
 }
+
+private val SUGGESTIONS = listOf("Yarın hava nasıl?", "Şemsiye gerekir mi?", "Bugün ne giysem?", "Akşam yağmur var mı?")
 
 @Composable
 private fun NowCard(state: HomeUiState) {

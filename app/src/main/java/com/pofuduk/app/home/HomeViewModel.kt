@@ -8,9 +8,11 @@ import com.pofuduk.app.data.SharedPreferencesStore
 import com.pofuduk.app.location.DeviceLocationProvider
 import com.pofuduk.app.location.LocationService
 import com.pofuduk.app.speech.SpeechListener
+import com.pofuduk.app.speech.SpeechRecognitionService
 import com.pofuduk.app.speech.SpeechService
 import com.pofuduk.core.conversation.ConversationManager
-import com.pofuduk.core.conversation.WeatherAnswerEngine
+import com.pofuduk.core.conversation.WeatherQueryService
+import com.pofuduk.core.mock.DemoWeatherRepository
 import com.pofuduk.core.engine.CharacterPersonalityEngine
 import com.pofuduk.core.engine.ClothingRecommendation
 import com.pofuduk.core.engine.ClothingRecommendationEngine
@@ -24,7 +26,6 @@ import com.pofuduk.core.model.CharacterMood
 import com.pofuduk.core.model.LocationIssue
 import com.pofuduk.core.model.LocationPermission
 import com.pofuduk.core.model.LocationResolution
-import com.pofuduk.core.model.LocationSource
 import com.pofuduk.core.model.Place
 import com.pofuduk.core.model.TapReaction
 import com.pofuduk.core.model.TapReactionPlayback
@@ -42,6 +43,7 @@ import com.pofuduk.core.speech.SpokenWordCue
 import com.pofuduk.core.speech.SubtitleTrack
 import com.pofuduk.core.speech.TextRange
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -86,6 +88,12 @@ data class HomeUiState(
     val isRefreshing: Boolean = false,
     val showLocationPicker: Boolean = false,
     val searchResults: List<Place> = emptyList(),
+    /** Question being typed or dictated (partial speech results appear here). */
+    val inputText: String = "",
+    val isListening: Boolean = false,
+    val isThinking: Boolean = false,
+    /** Microphone status/disclosure shown above the ask bar. */
+    val microphoneMessage: String? = null,
 ) {
     val theme: WeatherTheme get() = analysis?.theme ?: WeatherTheme.CLOUDY
 
@@ -93,6 +101,8 @@ data class HomeUiState(
         get() {
             val mood = when {
                 isSpeaking -> CharacterMood.SPEAKING
+                isListening -> CharacterMood.LISTENING
+                isThinking -> CharacterMood.THINKING
                 loadState is LoadState.Loading -> CharacterMood.THINKING
                 loadState is LoadState.Failed -> CharacterMood.ERROR
                 loadState is LoadState.NeedsLocation -> CharacterMood.LISTENING
@@ -112,7 +122,6 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
     private val preferences = UserPreferences()
     private val summary = WeatherSummaryEngine()
     private val clothingEngine = ClothingRecommendationEngine()
-    private val answers = WeatherAnswerEngine()
     private val conversation = ConversationManager()
     private val personality get() = CharacterPersonalityEngine(preferences.style, preferences.briefingLength)
 
@@ -126,6 +135,12 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
     private var pendingAutoSpeak = false
     private var loadJob: Job? = null
     private var searchJob: Job? = null
+    private var listenTimeout: Job? = null
+    private val recognizer = SpeechRecognitionService(application)
+
+    /** Questions use the same data as the screen: live repository, or the demo scenario in demo mode. */
+    private fun queryService(): WeatherQueryService =
+        WeatherQueryService(_state.value.demoScenario?.let { DemoWeatherRepository(it) } ?: repository)
 
     private val _state = MutableStateFlow(HomeUiState())
     val state: StateFlow<HomeUiState> = _state.asStateFlow()
@@ -273,7 +288,11 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
         }
     }
 
-    fun stop() = speech.stop()
+    /** Stops speaking and listening (also called when the app goes to the background). */
+    fun stop() {
+        speech.stop()
+        endListening(sendQuestion = false)
+    }
 
     fun toggleSound() {
         val on = !_state.value.soundOn
@@ -281,34 +300,89 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
         _state.update { it.copy(soundOn = on) }
     }
 
-    /** Typed question (voice input arrives in Phase A3). */
+    /** The field grows to 3 lines, so the Return key inserts "\n": treat it as "send" (like iOS). */
+    fun onInputChange(text: String) {
+        if (text.contains('\n')) {
+            _state.update { it.copy(inputText = text.replace("\n", "")) }
+            send()
+        } else {
+            _state.update { it.copy(inputText = text) }
+        }
+    }
+
+    /** Sends the typed (or dictated) question. */
+    fun send() {
+        val text = _state.value.inputText
+        _state.update { it.copy(inputText = "") }
+        ask(text)
+    }
+
+    /** Typed or spoken question → answer for the place it names (or the current place), then spoken. */
     fun ask(text: String) {
         val question = text.trim()
-        if (question.isEmpty()) return
-        val current = _state.value
-        val snapshot = current.snapshot
-        if (snapshot == null) {
-            say(personality.locationNeededBriefing(), question)
+        if (question.isEmpty() || _state.value.isThinking) return
+        speech.stop()
+        val query = conversation.interpret(question, Instant.now())
+        _state.update { it.copy(isThinking = true, lastQuestion = question) }
+        viewModelScope.launch {
+            val answer = queryService().answer(query, currentPlace = _state.value.snapshot?.place)
+            _state.update { it.copy(isThinking = false) }
+            say(answer, question)
+        }
+    }
+
+    // Microphone (permission is requested by the UI only when the user taps the mic)
+
+    fun toggleListening(start: () -> Unit) {
+        if (_state.value.isListening) finishListening() else start()
+    }
+
+    /** Called once RECORD_AUDIO is granted. Listens for one question, at most 10 s. */
+    fun startListening() {
+        if (!recognizer.isAvailable) {
+            _state.update { it.copy(microphoneMessage = "Bu cihazda konuşma tanıma bulunamadı. Yazarak sorabilirsin.") }
             return
         }
-        val now = Instant.now()
-        val query = conversation.interpret(question, now)
-        viewModelScope.launch {
-            val target = query.province?.place
-            val forPlace = when {
-                target == null -> snapshot
-                current.demoScenario != null -> MockWeatherData.snapshot(current.demoScenario, now, target.copy(source = LocationSource.DEMO))
-                else -> try {
-                    repository.snapshot(target, forceRefresh = false)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    val reason = ((e as? WeatherException)?.error ?: WeatherError.NETWORK).turkishExplanation
-                    return@launch say(personality.unavailableBriefing(reason), question)
-                }
-            }
-            say(answers.answer(query, forPlace, now), question)
+        speech.stop()
+        _state.update {
+            it.copy(
+                isListening = true, inputText = "",
+                microphoneMessage = if (recognizer.isOnDeviceSupported) null else SpeechRecognitionService.SERVER_NOTICE,
+            )
         }
+        recognizer.start(
+            onResult = { text, isFinal ->
+                if (!_state.value.isListening) return@start
+                if (text.isNotEmpty()) _state.update { it.copy(inputText = text) }
+                if (isFinal) endListening(sendQuestion = true)
+            },
+            onError = { message -> _state.update { it.copy(microphoneMessage = message) } },
+            onNotice = { message -> _state.update { it.copy(microphoneMessage = message) } },
+        )
+        listenTimeout?.cancel()
+        listenTimeout = viewModelScope.launch {
+            delay(10_000)
+            finishListening()
+            delay(3_000) // grace period for the final result of what was already said
+            endListening(sendQuestion = true)
+        }
+    }
+
+    fun microphoneDenied() = _state.update {
+        it.copy(microphoneMessage = "Sesli soru için mikrofon izni gerekiyor. Yazarak da sorabilirsin.")
+    }
+
+    /** User tapped the mic again: stop recording; the final result is then sent. */
+    private fun finishListening() {
+        if (_state.value.isListening) recognizer.finishListening()
+    }
+
+    private fun endListening(sendQuestion: Boolean) {
+        if (!_state.value.isListening) return
+        listenTimeout?.cancel()
+        recognizer.stop()
+        _state.update { it.copy(isListening = false) }
+        if (sendQuestion && _state.value.inputText.isNotBlank()) send()
     }
 
     fun onCharacterTap() {
@@ -372,6 +446,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
     }
 
     override fun onCleared() {
+        recognizer.stop()
         speech.shutdown()
     }
 

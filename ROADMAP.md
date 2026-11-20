@@ -12,9 +12,9 @@ subtitles and lip sync, Canvas character with accessories, weather effects and t
   coarsened to ~1 km before use; province picker + district search (platform Geocoder); pull-to-refresh, error states,
   attribution footer. Precise location is intentionally not requested (weather needs ~1 km).
 
-## A3 — Voice questions
-- `RECORD_AUDIO` only while the mic button is held; `SpeechRecognizer` tr-TR, prefer offline; listening mood.
-- Conversation context (ConversationManager), other provinces via repository, travel questions.
+## A3 — Voice questions ✅ (2026-11-20)
+- Mic tap → `SpeechRecognizer` tr-TR (on-device first, disclosed fallback), ≤ 10 s, auto-send; context, other provinces,
+  travel questions via `core/WeatherQueryService`.
 
 ## A4 — Notifications + background refresh
 - `POST_NOTIFICATIONS` (Android 13+) opt-in; channels per category; quiet hours.

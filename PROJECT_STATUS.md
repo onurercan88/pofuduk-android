@@ -30,7 +30,20 @@ Updated: 2026-11-20
       Alanya search → Antalya forecast spoken — `docs/screenshots/`
 - [x] core tests: 146 passing (+1 opt-in live skipped)
 
+## Done (Phase A3 — voice questions, 2026-11-20)
+- [x] `SpeechRecognitionService`: tr-TR, partial results into the ask field, ≤ 10 s per question, final result sent automatically;
+      on-device recognizer when available, falls back to the regular service (prefer offline) with a disclosure when the
+      Turkish on-device pack is missing; `RECORD_AUDIO` requested only on the first mic tap
+- [x] Listening/thinking moods; suggestion chips; Return sends (3-line field)
+- [x] `core/WeatherQueryService` (moved from the iOS app layer, now tested): other provinces, travel answers compared with
+      the current place (origin failure tolerated), demo answers labelled; `DemoWeatherRepository`
+- [x] Emulator: travel question answered with live data; mic permission prompt + honest "no Turkish speech pack" message
+      (emulator has no Turkish recognition pack) — `docs/screenshots/`
+- [x] core tests: 153 passing (+1 opt-in live skipped)
+
 ## Open
+- [ ] Voice recognition itself not verified (emulator has no Turkish language pack / host mic) — check on a real phone
+- [ ] Parser (same as iOS): "yolculuğa" is not read as travel (only "yolculuk"); consider stem matching on both platforms
 - [ ] Not tested by hand yet: offline/failed screen, denied-permission → settings → resume path, Android 8–11 (requestSingleUpdate path)
 - [ ] Cold start on the emulator took several seconds right after boot (Play updates running); measure on a real device in A2
 - [ ] If the TTS engine restarts mid-briefing (e.g. engine update), speech stops and subtitles stay on the last sentence — consider rebinding/retry

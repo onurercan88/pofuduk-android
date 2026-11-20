@@ -6,12 +6,19 @@
     <!-- Approximate location only, foreground only; asked after Pofuduk's explanation. No FINE, no BACKGROUND. -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-feature android:name="android.hardware.location" android:required="false" />
-    <!-- Microphone / notifications are added with their phases (see ROADMAP.md). -->
+    <!-- Voice questions: microphone only while Pofuduk is listening (asked when the mic is first tapped). -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <!-- Notifications are added with their phase (see ROADMAP.md). -->
 
     <!-- Android 11+: lets the app see the installed TextToSpeech engine. -->
     <queries>
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+        <!-- Android 11+: lets the app see the installed speech recognition service. -->
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
         </intent>
     </queries>
 
