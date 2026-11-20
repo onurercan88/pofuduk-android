@@ -54,7 +54,11 @@ fun LocationPromptCard(prompt: LocationPrompt, onAllow: () -> Unit, onOpenSettin
         LocationPrompt.Explanation ->
             "Bulunduğun yerin havasını anlatabilmem için yaklaşık konumuna ihtiyacım var. Konumunu yalnızca uygulama açıkken " +
                 "ve sadece hava durumu için kullanırım. Seni takip etmem, kimseyle paylaşmam."
-        is LocationPrompt.Issue -> prompt.issue.turkishExplanation
+        // Android has no IP-based "approximate location" option, so the iOS wording that offers it is not used here.
+        is LocationPrompt.Issue -> when (prompt.issue) {
+            LocationIssue.PERMISSION_DENIED -> "Konum izni verilmedi. Sorun değil! İstersen bir şehir ya da ilçe seçebilirsin."
+            else -> prompt.issue.turkishExplanation
+        }
     }
     HomeCard {
         Text(

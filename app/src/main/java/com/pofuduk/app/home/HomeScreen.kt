@@ -67,7 +67,9 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pofuduk.app.character.CharacterView
+import com.pofuduk.app.settings.SettingsDialog
 import com.pofuduk.app.ui.theme.LocalPalette
 import com.pofuduk.app.ui.theme.PofudukTheme
 import com.pofuduk.app.ui.theme.backgroundGradient
@@ -134,7 +136,7 @@ fun HomeScreen(state: HomeUiState, viewModel: HomeViewModel) {
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Header(state, onToggleSound = viewModel::toggleSound, onChangePlace = viewModel::openLocationPicker)
+                Header(state, onToggleSound = viewModel::toggleSound, onChangePlace = viewModel::openLocationPicker, onSettings = viewModel::openSettings)
                 CharacterView(
                     state.appearance,
                     Modifier.clickable(onClickLabel = "Pofuduk'a dokun", role = Role.Button) { viewModel.onCharacterTap() },
@@ -157,6 +159,15 @@ fun HomeScreen(state: HomeUiState, viewModel: HomeViewModel) {
                 Footer(state, onDemo = viewModel::setDemo)
             }
         }
+        if (state.showSettings) {
+            val notificationState by viewModel.notifications.state.collectAsStateWithLifecycle()
+            SettingsDialog(
+                state = notificationState, coordinator = viewModel.notifications,
+                placeName = state.snapshot?.place?.displayName,
+                onChangePlace = { viewModel.closeSettings(); viewModel.openLocationPicker() },
+                onDismiss = viewModel::closeSettings,
+            )
+        }
         if (state.showLocationPicker) {
             LocationPickerDialog(
                 results = state.searchResults,
@@ -170,7 +181,7 @@ fun HomeScreen(state: HomeUiState, viewModel: HomeViewModel) {
 }
 
 @Composable
-private fun Header(state: HomeUiState, onToggleSound: () -> Unit, onChangePlace: () -> Unit) {
+private fun Header(state: HomeUiState, onToggleSound: () -> Unit, onChangePlace: () -> Unit, onSettings: () -> Unit) {
     val palette = LocalPalette.current
     val place = state.snapshot?.place
     val zone = place?.timeZone ?: ZoneId.systemDefault()
@@ -192,8 +203,11 @@ private fun Header(state: HomeUiState, onToggleSound: () -> Unit, onChangePlace:
                 if (state.isStale) Badge("Güncel olmayabilir")
             }
         }
-        OutlinedButton(onClick = onToggleSound, modifier = Modifier.heightIn(min = 48.dp), border = BorderStroke(1.dp, palette.accent)) {
-            Text(if (state.soundOn) "🔊 Ses açık" else "🔇 Ses kapalı", color = palette.ink)
+        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            OutlinedButton(onClick = onToggleSound, modifier = Modifier.heightIn(min = 48.dp), border = BorderStroke(1.dp, palette.accent)) {
+                Text(if (state.soundOn) "🔊 Ses açık" else "🔇 Ses kapalı", color = palette.ink)
+            }
+            TextButton(onClick = onSettings, modifier = Modifier.heightIn(min = 48.dp)) { Text("⚙️ Ayarlar", color = palette.ink) }
         }
     }
 }

@@ -16,11 +16,11 @@ subtitles and lip sync, Canvas character with accessories, weather effects and t
 - Mic tap → `SpeechRecognizer` tr-TR (on-device first, disclosed fallback), ≤ 10 s, auto-send; context, other provinces,
   travel questions via `core/WeatherQueryService`.
 
-## A4 — Notifications + background refresh
-- `POST_NOTIFICATIONS` (Android 13+) opt-in; channels per category; quiet hours.
-- WorkManager periodic refresh using the last coarsened place (never requests location in background).
-- RainNotificationEngine plans → exact-ish scheduling via WorkManager/AlarmManager (no exact-alarm permission).
-- Morning briefing ("Pofuduk Günaydın") + settings.
+## A4 — Notifications + background refresh ✅ (2026-11-20)
+- Opt-in notifications (permission asked when turned on), one channel per category, quiet hours; `core/NotificationPlanner`.
+- Alarms without exact-alarm permission: 10-min `setWindow` + Doze fallback `setAndAllowWhileIdle`, shown once, dropped if
+  > 30 min late. Hourly WorkManager refresh from the chosen/last coarsened place (no background location).
+- "Pofuduk Günaydın": morning greeting once per day (time presets/custom, auto-speak or text), optional notification; settings screen.
 
 ## A5 — Settings, travel, polish
 - Settings: style, length, speech rate, voice, subtitle size, "Delete my data".

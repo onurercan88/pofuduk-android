@@ -4,9 +4,8 @@ import android.app.Application
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.pofuduk.app.data.SharedPreferencesStore
-import com.pofuduk.app.location.DeviceLocationProvider
-import com.pofuduk.app.location.LocationService
+import com.pofuduk.app.graph
+import com.pofuduk.core.notification.MorningBriefingEngine
 import com.pofuduk.app.speech.SpeechListener
 import com.pofuduk.app.speech.SpeechRecognitionService
 import com.pofuduk.app.speech.SpeechService
@@ -17,7 +16,6 @@ import com.pofuduk.core.engine.CharacterPersonalityEngine
 import com.pofuduk.core.engine.ClothingRecommendation
 import com.pofuduk.core.engine.ClothingRecommendationEngine
 import com.pofuduk.core.engine.WeatherAnalysis
-import com.pofuduk.core.engine.WeatherProviderFallbackEngine
 import com.pofuduk.core.engine.WeatherSummaryEngine
 import com.pofuduk.core.mock.MockWeatherData
 import com.pofuduk.core.model.Briefing
@@ -32,12 +30,8 @@ import com.pofuduk.core.model.TapReactionPlayback
 import com.pofuduk.core.model.UserPreferences
 import com.pofuduk.core.model.WeatherSnapshot
 import com.pofuduk.core.model.WeatherTheme
-import com.pofuduk.core.provider.OpenMeteoProvider
-import com.pofuduk.core.provider.UrlConnectionHttpClient
 import com.pofuduk.core.provider.WeatherError
 import com.pofuduk.core.provider.WeatherException
-import com.pofuduk.core.repository.CachedWeatherRepository
-import com.pofuduk.core.repository.FileWeatherCacheStore
 import com.pofuduk.core.speech.PlaybackStatus
 import com.pofuduk.core.speech.SpokenWordCue
 import com.pofuduk.core.speech.SubtitleTrack
@@ -50,7 +44,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.io.File
 import java.time.Instant
 
 sealed interface LocationPrompt {
@@ -87,6 +80,7 @@ data class HomeUiState(
     val lastQuestion: String? = null,
     val isRefreshing: Boolean = false,
     val showLocationPicker: Boolean = false,
+    val showSettings: Boolean = false,
     val searchResults: List<Place> = emptyList(),
     /** Question being typed or dictated (partial speech results appear here). */
     val inputText: String = "",
@@ -125,11 +119,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
     private val conversation = ConversationManager()
     private val personality get() = CharacterPersonalityEngine(preferences.style, preferences.briefingLength)
 
-    private val location = LocationService(DeviceLocationProvider(application), SharedPreferencesStore(application))
-    private val repository = CachedWeatherRepository(
-        WeatherProviderFallbackEngine(listOf(OpenMeteoProvider(UrlConnectionHttpClient()))),
-        FileWeatherCacheStore(File(application.cacheDir, "forecasts")),
-    )
+    private val graph = application.graph
+    private val location = graph.location
+    private val repository = graph.repository
+    val notifications = graph.notifications
 
     private var tapCount = 0
     private var pendingAutoSpeak = false
@@ -189,7 +182,16 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
             Log.d(TAG, "forecast ready: ${System.currentTimeMillis() - started} ms (${snapshot.source})")
             val analysis = summary.analyze(snapshot, now)
             val clothing = clothingEngine.recommend(snapshot, now = now)
-            val briefing = personality.briefing(analysis, clothing = clothing)
+            val zone = snapshot.place.timeZone
+            // "Pofuduk Günaydın": once per day, from the chosen time until noon (real forecasts only).
+            val morning = demo == null && notifications.shouldGreet(zone, now)
+            val briefing = if (morning) {
+                notifications.markGreeted(zone, now)
+                MorningBriefingEngine().briefing(snapshot, analysis, clothing = clothing, now = now)
+            } else {
+                personality.briefing(analysis, clothing = clothing)
+            }
+            if (demo == null) notifications.refresh(snapshot) // notifications are planned only from real forecasts
             _state.update {
                 it.copy(
                     loadState = LoadState.Loaded, snapshot = snapshot, analysis = analysis, clothing = clothing,
@@ -198,7 +200,8 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
                     restingMood = briefing.restingMood, isRefreshing = false, lastQuestion = null,
                 )
             }
-            if (autoSpeak) speakWhenReady(briefing)
+            val speaks = !morning || notifications.state.value.morning.speaksAutomatically
+            if (autoSpeak && speaks) speakWhenReady(briefing)
         }
     }
 
@@ -245,6 +248,9 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
         load(autoSpeak = true, forceRefresh = true)
     }
 
+    fun openSettings() = _state.update { it.copy(showSettings = true) }
+    fun closeSettings() = _state.update { it.copy(showSettings = false) }
+
     fun openLocationPicker() = _state.update { it.copy(showLocationPicker = true, searchResults = emptyList()) }
     fun closeLocationPicker() = _state.update { it.copy(showLocationPicker = false, searchResults = emptyList()) }
 
@@ -262,9 +268,16 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
         }
     }
 
-    /** Back from system settings: permission or location services may have changed. */
+    /** Back from system settings (permissions may have changed) or reopened in the morning (daily greeting). */
     fun onResume() {
-        val s = _state.value.loadState
+        notifications.refreshPermission()
+        val current = _state.value
+        val zone = current.snapshot?.place?.timeZone
+        if (current.loadState == LoadState.Loaded && current.demoScenario == null && zone != null && notifications.shouldGreet(zone)) {
+            load(autoSpeak = true)
+            return
+        }
+        val s = current.loadState
         if (s is LoadState.NeedsLocation && s.prompt is LocationPrompt.Issue &&
             location.permission == LocationPermission.AUTHORIZED
         ) {

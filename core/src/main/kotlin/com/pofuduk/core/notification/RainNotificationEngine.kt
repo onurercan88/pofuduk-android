@@ -33,6 +33,11 @@ class RainNotificationEngine(
     val temperatureChangeThreshold: Double = 8.0,
     /** Local time for the "tomorrow is different" heads-up. */
     val temperatureNoticeHour: Int = 19,
+    /**
+     * "Yaklaşık 30 dakika içinde" for events within 90 min (iOS default). Android delivers inexact alarms that may
+     * shift by minutes, so it uses clock times only ("Saat 16.00 civarında"), which stay correct when late.
+     */
+    val relativeTimes: Boolean = true,
 ) {
     fun plan(
         snapshot: WeatherSnapshot,
@@ -75,7 +80,7 @@ class RainNotificationEngine(
             }
             fun whenText(event: Instant): String {
                 val minutes = (event.secondsSince(now) / 60).roundedInt()
-                if (minutes <= 90) return "Yaklaşık ${max(5, (minutes + 4) / 5 * 5)} dakika içinde"
+                if (relativeTimes && minutes <= 90) return "Yaklaşık ${max(5, (minutes + 4) / 5 * 5)} dakika içinde"
                 return "Saat ${TurkishFormatting.clockTime(event, zone)} civarında"
             }
 

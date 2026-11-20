@@ -41,7 +41,21 @@ Updated: 2026-11-20
       (emulator has no Turkish recognition pack) — `docs/screenshots/`
 - [x] core tests: 153 passing (+1 opt-in live skipped)
 
+## Done (Phase A4 — notifications + background refresh, 2026-11-20)
+- [x] `core/NotificationPlanner` (rain/wind/storm/temperature + morning, dedup log; never from demo data) + tests — core 156 tests
+- [x] App: `AppGraph` (shared by UI + background), channels per category, `NotificationScheduler` (window alarm + Doze
+      fallback, shown-once record, > 30 min late → dropped), `RefreshWorker` hourly (network constraint, only when enabled)
+- [x] "Pofuduk Günaydın" in the app (once per day, auto-speak or text-only) and on resume; settings screen (morning time,
+      auto-speak, morning notification, categories, lead time, probability, quiet hours, planned list, honest "how it works")
+- [x] Emulator (clock moved by hand): permission asked only when turned on; storm at 16.00 → alarms for 15.30 → notification
+      delivered inside the 10-min window, second alarm skipped ("already shown"); morning greeting spoken at 08.00
+- [x] Fixes found while testing: replanning no longer cancels due-but-undelivered (in-flight) alarms; notification texts use clock
+      times on Android (`RainNotificationEngine(relativeTimes = false)`) because delivery may shift; "denied" note only after asking;
+      Android wording for denied location (no IP option)
+
 ## Open
+- [ ] Alarms are cleared by the system on reboot/force-stop; future ones come back with the next refresh, a due one in that gap is lost
+- [ ] Emulator location fix took ~20 s when the last fix was old; measure on a real phone (fused provider)
 - [ ] Voice recognition itself not verified (emulator has no Turkish language pack / host mic) — check on a real phone
 - [ ] Parser (same as iOS): "yolculuğa" is not read as travel (only "yolculuk"); consider stem matching on both platforms
 - [ ] Not tested by hand yet: offline/failed screen, denied-permission → settings → resume path, Android 8–11 (requestSingleUpdate path)

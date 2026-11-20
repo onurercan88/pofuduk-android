@@ -50,6 +50,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.kotlinx.coroutines.android)
+    // Periodic background forecast refresh (survives reboots, respects battery/network constraints).
+    implementation(libs.androidx.work.runtime)
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
