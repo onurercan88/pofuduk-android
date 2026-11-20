@@ -14,10 +14,12 @@ Updated: 2026-11-20
       sunglasses/umbrella/umbrella hat/scarf/kite, weather effects, tap reactions + giggle, typed questions, clothing, hourly, advice,
       dark + night theme, Remove-animations support, no permissions, no backup
 - [x] Debug APK builds without warnings
+- [x] Emulator run (AVD `pofuduk35`, Pixel 7, Android 35 Play image, WHPX): speaks Turkish (Google TTS embedded tr-TR voice),
+      sentence + word highlight and lip sync confirmed — `docs/screenshots/`
+- [x] GitHub https://github.com/onurercan88/pofuduk-android (public) + CI (`:core:test` + `:app:assembleDebug`)
 
 ## Open
-- [ ] Emulator/device run + screenshot (needs emulator + system image download, or a USB device)
-- [ ] GitHub repo (`onurercan88/pofuduk-android`?) — ask the user before creating; push from the user's terminal
-- [ ] CI (GitHub Actions: `:core:test` + `:app:assembleDebug`)
+- [ ] Cold start on the emulator took several seconds right after boot (Play updates running); measure on a real device in A2
+- [ ] If the TTS engine restarts mid-briefing (e.g. engine update), speech stops and subtitles stay on the last sentence — consider rebinding/retry
 - [ ] Phases A2–A7 (ROADMAP.md)
 - [ ] Open-Meteo non-commercial confirmation (shared with iOS) or WeatherKit proxy before Play release
