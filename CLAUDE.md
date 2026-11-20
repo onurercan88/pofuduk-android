@@ -21,6 +21,9 @@ Product requirements: the iOS repo's `PRD.md` (read the relevant section only).
 - Gradle/SDK commands need the sandbox disabled (they write to `%USERPROFILE%\.gradle` and the SDK).
 - `git push` only works in the user's terminal tabs (sandbox can't read GitHub credentials).
 - Put new business logic in `core` (pure Kotlin/JVM, no Android imports) so it stays testable.
+- Release: `scripts\gradle.cmd :app:bundleRelease` (signed only if `keystore.properties` exists). Store graphics and
+  screenshots: debug extras `art/demo/clock/ask/travel/settings` (RELEASE_CHECKLIST.md). Use `AppClock.now()` for
+  anything that depends on "now" in the app layer.
 
 ## Port rules
 - `core` mirrors iOS `PofudukCore` 1:1 (same Turkish strings, same thresholds, same tests). When iOS logic

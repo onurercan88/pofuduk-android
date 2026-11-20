@@ -4,6 +4,7 @@ import android.app.Application
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.pofuduk.app.AppClock
 import com.pofuduk.app.graph
 import com.pofuduk.core.notification.MorningBriefingEngine
 import com.pofuduk.app.speech.SpeechListener
@@ -116,7 +117,7 @@ data class HomeUiState(
             return CharacterAppearance(mood, theme, speechCue = speechCue, tapReaction = tapReaction)
         }
 
-    val isStale: Boolean get() = snapshot?.isStale(Instant.now()) == true
+    val isStale: Boolean get() = snapshot?.isStale(AppClock.now()) == true
 }
 
 /**
@@ -144,7 +145,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
 
     /** Questions use the same data as the screen: live repository, or the demo scenario in demo mode. */
     private fun queryService(): WeatherQueryService =
-        WeatherQueryService(_state.value.demoScenario?.let { DemoWeatherRepository(it) } ?: repository)
+        WeatherQueryService(_state.value.demoScenario?.let { DemoWeatherRepository(it, AppClock.now) } ?: repository, AppClock.now)
 
     private val _state = MutableStateFlow(
         HomeUiState(preferences = graph.userPreferences.load(), soundOn = graph.keyValue.getString(SOUND_KEY) != "0"),
@@ -152,7 +153,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
     val state: StateFlow<HomeUiState> = _state.asStateFlow()
 
     private val speech = SpeechService(application, this, _state.value.preferences.voiceName)
-    private val travelService get() = TravelWeatherService(_state.value.demoScenario?.let { DemoWeatherRepository(it) } ?: repository)
+    private val travelService get() = TravelWeatherService(_state.value.demoScenario?.let { DemoWeatherRepository(it, AppClock.now) } ?: repository, AppClock.now)
     private var travelSearchJob: Job? = null
 
     init {
@@ -177,7 +178,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
                     is LocationResolution.NeedsUserChoice -> return@launch enterNeedsLocation(LocationPrompt.Issue(r.issue))
                 }
             }
-            val now = Instant.now()
+            val now = AppClock.now()
             val snapshot = try {
                 if (demo != null) MockWeatherData.snapshot(demo, now, place) else repository.snapshot(place, forceRefresh)
             } catch (e: CancellationException) {
@@ -309,7 +310,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
     fun playBriefing() {
         val s = _state.value
         if (s.loadState == LoadState.Loaded && s.analysis != null) {
-            val briefing = personality.briefing(summary.analyze(s.snapshot!!, Instant.now()), clothing = s.clothing)
+            val briefing = personality.briefing(summary.analyze(s.snapshot!!, AppClock.now()), clothing = s.clothing)
             say(briefing, question = null)
         } else {
             say(s.message.copy(), question = null)
@@ -351,7 +352,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
         val question = text.trim()
         if (question.isEmpty() || _state.value.isThinking) return
         speech.stop()
-        val query = conversation.interpret(question, Instant.now())
+        val query = conversation.interpret(question, AppClock.now())
         _state.update { it.copy(isThinking = true, lastQuestion = question) }
         viewModelScope.launch {
             val answer = queryService().answer(query, currentPlace = _state.value.snapshot?.place)
@@ -424,6 +425,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
     }
 
     private fun say(message: Briefing, question: String?) {
+        pendingAutoSpeak = false // anything said now replaces a briefing still waiting for TTS
         val s = _state.value
         _state.update {
             it.copy(
@@ -476,7 +478,12 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
 
     // Travel ("Seyahat Hava Durumu")
 
-    fun openTravel() = _state.update { it.copy(showTravel = true) }
+    fun openTravel() = _state.update {
+        val today = AppClock.now().atZone(ZoneId.systemDefault()).toLocalDate()
+        // A departure left in the past (app kept open over days) moves to tomorrow.
+        val travel = if (it.travel.departure.isBefore(today)) it.travel.copy(departure = today.plusDays(1), returnDate = null) else it.travel
+        it.copy(showTravel = true, travel = travel)
+    }
     fun closeTravel() = _state.update { it.copy(showTravel = false) }
 
     /** Destination search: offline provinces first (also "Bursa'ya" style input), then the platform geocoder. */
@@ -585,7 +592,7 @@ data class TravelUiState(
     val query: String = "",
     val candidates: List<Place> = emptyList(),
     val destination: Place? = null,
-    val departure: LocalDate = LocalDate.now(ZoneId.systemDefault()).plusDays(1),
+    val departure: LocalDate = AppClock.now().atZone(ZoneId.systemDefault()).toLocalDate().plusDays(1),
     val returnDate: LocalDate? = null,
     val isLoading: Boolean = false,
     val summary: TravelSummary? = null,

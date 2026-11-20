@@ -69,6 +69,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.pofuduk.app.AppClock
 import com.pofuduk.app.character.CharacterView
 import com.pofuduk.app.settings.SettingsDialog
 import com.pofuduk.app.settings.subtitleFontSize
@@ -206,7 +207,7 @@ private fun Header(state: HomeUiState, onToggleSound: () -> Unit, onChangePlace:
                 color = palette.ink, fontSize = 22.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.semantics { heading() },
             )
-            Text(TurkishFormatting.longDate(Instant.now(), zone), color = palette.inkSecondary, fontSize = 14.sp)
+            Text(TurkishFormatting.longDate(AppClock.now(), zone), color = palette.inkSecondary, fontSize = 14.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
                 if (state.demoScenario != null) Badge("Örnek veri")
                 if (state.isStale) Badge("Güncel olmayabilir")
@@ -453,7 +454,7 @@ private fun HourlyCard(state: HomeUiState) {
     val palette = LocalPalette.current
     val snapshot = state.snapshot ?: return
     val zone = snapshot.place.timeZone
-    val from = Instant.now().startOfHour(zone)
+    val from = AppClock.now().startOfHour(zone)
     val hours = snapshot.hourly.filter { !it.time.isBefore(from) }.take(12)
     if (hours.isEmpty()) return
     HomeCard {

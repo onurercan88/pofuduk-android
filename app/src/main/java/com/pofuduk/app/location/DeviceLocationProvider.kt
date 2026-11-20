@@ -23,6 +23,9 @@ import com.pofuduk.core.model.LocationPreference
 import com.pofuduk.core.model.LocationSource
 import com.pofuduk.core.model.Place
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -81,22 +84,28 @@ class DeviceLocationProvider(context: Context) {
             .maxByOrNull { it.elapsedRealtimeNanos }
     }
 
-    /** Each provider gets a short, separate timeout so one silent provider can't block the others. */
+    /**
+     * Asks all enabled providers at once and takes the first fix, within one overall budget — a silent provider
+     * (e.g. network without a connection) can no longer delay the others.
+     */
     @SuppressLint("MissingPermission")
-    private suspend fun freshLocation(): Location? {
-        for (provider in providers) {
-            val location = try {
-                withTimeoutOrNull(PROVIDER_TIMEOUT_MS) { single(provider) }
-            } catch (e: SecurityException) {
-                null // e.g. GPS with coarse-only permission before Android 12
+    private suspend fun freshLocation(): Location? = withTimeoutOrNull(FRESH_BUDGET_MS) {
+        channelFlow {
+            for (provider in providers) {
+                launch {
+                    val location = try {
+                        single(provider)
+                    } catch (e: SecurityException) {
+                        null // e.g. GPS with coarse-only permission before Android 12
+                    }
+                    if (location != null) send(location)
+                }
             }
-            if (location != null) return location
-        }
-        return null
+        }.firstOrNull()
     }
 
     private companion object {
-        const val PROVIDER_TIMEOUT_MS = 8_000L
+        const val FRESH_BUDGET_MS = 10_000L
     }
 
     @SuppressLint("MissingPermission")

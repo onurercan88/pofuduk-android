@@ -32,7 +32,10 @@ subtitles and lip sync, Canvas character with accessories, weather effects and t
   (commercial use, same data as iOS). Open-Meteo stays as fallback. User sets up accounts/keys.
 - Alternatively confirm Open-Meteo non-commercial status by email (draft in iOS `API_INTEGRATIONS.md`).
 
-## A7 — Google Play release
+## A7 — Google Play release (prep ✅ 2026-11-20, store steps are yours — see RELEASE_CHECKLIST.md)
+- Done: release signing from `keystore.properties`, R8 release verified on the emulator, version 1.0.0, store icon +
+  feature graphic + launcher icon rendered from the character, 7 store screenshots (debug extras + fixed clock),
+  `PLAY_STORE.md` (listing, data safety proposal, declarations), Android privacy page `docs/gizlilik.html`, CI builds the bundle.
 - Play Console account (user), upload key + Play App Signing (user creates keystore; never committed).
 - Data safety form (no data collected/shared), content rating, privacy policy URL (Turkish).
 - New personal accounts: closed test with ≥12 testers for 14 days before production.

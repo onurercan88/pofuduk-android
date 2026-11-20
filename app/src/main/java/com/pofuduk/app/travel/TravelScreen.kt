@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.pofuduk.app.AppClock
 import com.pofuduk.app.home.HomeViewModel
 import com.pofuduk.app.home.TravelUiState
 import com.pofuduk.app.ui.theme.LocalPalette
@@ -53,7 +54,7 @@ import java.time.ZoneId
 fun TravelDialog(t: TravelUiState, viewModel: HomeViewModel, onDismiss: () -> Unit) {
     val palette = LocalPalette.current
     val context = LocalContext.current
-    val today = LocalDate.now(ZoneId.systemDefault())
+    val today = AppClock.now().atZone(ZoneId.systemDefault()).toLocalDate()
     val pickDate = { initial: LocalDate, min: LocalDate, onPicked: (LocalDate) -> Unit ->
         DatePickerDialog(context, { _, y, m, d -> onPicked(LocalDate.of(y, m + 1, d)) }, initial.year, initial.monthValue - 1, initial.dayOfMonth)
             .apply { datePicker.minDate = min.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli() }

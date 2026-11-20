@@ -63,7 +63,17 @@ Updated: 2026-11-20
 - [x] Fix: cache entries dated in the future (device clock moved back) are never treated as fresh (+test) — core 159 tests
 - [x] Accessibility: 200% font checked on home (wraps, nothing clipped), labels via uiautomator, decorative emoji hidden
 
+## Done (Phase A7 prep — release readiness, 2026-11-20)
+- [x] Version 1.0.0 (code 1); release signing via git-ignored `keystore.properties`; unsigned `bundleRelease` in CI
+- [x] R8 release (1.45 MB APK / 3.6 MB AAB) installed on the emulator: forecast cache + preferences JSON work after shrinking
+- [x] Store art from the character renderer (debug `--ez art true`): 512 icon, 1024×500 feature graphic, launcher foreground PNGs
+- [x] 7 phone screenshots 1080×1920 (demo + fixed clock via debug extras `demo/clock/ask/travel/settings`; `AppClock`)
+- [x] `PLAY_STORE.md`, `RELEASE_CHECKLIST.md`, `docs/gizlilik.html` (Android privacy policy) + `docs/index.html`
+- [x] Fixes: travel default date and screen dates follow the app clock; a question asked before TTS is ready is no longer
+      overwritten by the pending auto-briefing; location asks all providers at once (10 s budget instead of up to 24 s)
+
 ## Open
+- [ ] (you) Upload keystore, Play Console account/app, GitHub Pages for the privacy page, closed test (12 testers / 14 days)
 - [ ] Travel abroad: Android Geocoder gives no time zone → Turkey-only search for now
 - [ ] Alarms are cleared by the system on reboot/force-stop; future ones come back with the next refresh, a due one in that gap is lost
 - [ ] Emulator location fix took ~20 s when the last fix was old; measure on a real phone (fused provider)

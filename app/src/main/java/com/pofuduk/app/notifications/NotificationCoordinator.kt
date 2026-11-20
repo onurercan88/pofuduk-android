@@ -1,6 +1,7 @@
 package com.pofuduk.app.notifications
 
 import android.content.Context
+import com.pofuduk.app.AppClock
 import com.pofuduk.core.model.OfficialWarning
 import com.pofuduk.core.model.WeatherSnapshot
 import com.pofuduk.core.notification.MorningBriefingEngine
@@ -46,9 +47,9 @@ class NotificationCoordinator(private val context: Context, private val kv: KeyV
 
     // Morning briefing ("Pofuduk Günaydın")
 
-    fun shouldGreet(zone: ZoneId, now: Instant = Instant.now()): Boolean = morningEngine.shouldGreet(now, _state.value.morning, zone)
+    fun shouldGreet(zone: ZoneId, now: Instant = AppClock.now()): Boolean = morningEngine.shouldGreet(now, _state.value.morning, zone)
 
-    fun markGreeted(zone: ZoneId, now: Instant = Instant.now()) =
+    fun markGreeted(zone: ZoneId, now: Instant = AppClock.now()) =
         updateMorning { it.copy(lastGreetedDay = MorningBriefingEngine.dayKey(now, zone)) }
 
     fun updateMorning(change: (MorningBriefingSettings) -> MorningBriefingSettings) {
