@@ -2,8 +2,9 @@
 
 Steps marked **(you)** need your accounts, passwords or decisions — Claude never enters them.
 
-## 1. Upload key (you, once)
+## 1. Upload key (you, once) ✅ created 2026-11-20 (`C:\Source\pofuduk-keys\pofuduk-upload.jks`, CN=Pofuduk)
 Keep the keystore and its passwords **outside the repo** and back them up (losing the upload key needs a Play reset).
+Easiest: `scripts\create-upload-key.ps1` (hidden password prompt, writes `keystore.properties`). Manual alternative:
 ```powershell
 & "$env:USERPROFILE\Android\jdk\jdk-17.0.21.1+2\bin\keytool.exe" -genkeypair -v -keystore C:\Source\pofuduk-upload.jks -alias pofuduk-upload -keyalg RSA -keysize 4096 -validity 10000
 ```
