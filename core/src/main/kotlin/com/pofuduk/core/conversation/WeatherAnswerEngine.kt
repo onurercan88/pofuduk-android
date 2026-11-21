@@ -84,6 +84,14 @@ class WeatherAnswerEngine(val thresholds: WeatherThresholds = WeatherThresholds.
                 }
             }
 
+        /** The asked hours start with the current hour and it is precipitating right now. */
+        val precipitatingNow: Boolean
+            get() {
+                if (!isToday || !snapshot.current.condition.isPrecipitation) return false
+                val first = hours.firstOrNull() ?: return false
+                return first.time.startOfHour(zone) == now.startOfHour(zone)
+            }
+
         /** "Yarın akşam", "Bugün saat 17.00 civarında", "Cumartesi" */
         val label: String
             get() {
@@ -175,8 +183,13 @@ class WeatherAnswerEngine(val thresholds: WeatherThresholds = WeatherThresholds.
         val hours = c.hours
         val zone = c.zone
         if (hours.isNotEmpty()) {
-            val p = summary.precipitationOutlook(hours)
-                ?: return listOf(if (repeatLabel) "${c.label} yağış beklenmiyor." else "Yağış beklenmiyor.")
+            val p = summary.precipitationOutlook(hours) ?: return listOf(
+                when {
+                    c.precipitatingNow -> "Şu an yağış var ama sonraki saatlerde başka yağış beklenmiyor."
+                    repeatLabel -> "${c.label} yağış beklenmiyor."
+                    else -> "Yağış beklenmiyor."
+                },
+            )
             val noun = when (p.kind) {
                 PrecipitationKind.SNOW -> "kar"
                 PrecipitationKind.THUNDERSTORM -> "gök gürültülü sağanak"

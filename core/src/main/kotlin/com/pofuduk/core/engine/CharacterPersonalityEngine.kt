@@ -180,6 +180,18 @@ class CharacterPersonalityEngine(
         val p = a.precipitation
         if (p == null) {
             if (!a.hasHourlyCoverage) return emptyList()
+            // It is precipitating now but the coming hours are dry: never say "no precipitation"
+            // right after "hava yağmurlu / gök gürültülü sağanaklı".
+            if (a.current.condition.isPrecipitation) {
+                return listOf(
+                    when (a.briefingTime) {
+                        BriefingTime.MORNING -> "Şu anki yağışın ardından bugün başka yağış beklenmiyor."
+                        BriefingTime.AFTERNOON -> "Şu anki yağışın ardından günün geri kalanında yağış beklenmiyor."
+                        BriefingTime.EVENING -> "Şu anki yağışın ardından bu akşam başka yağış beklenmiyor."
+                        BriefingTime.NIGHT -> "Şu anki yağışın ardından bu gece başka yağış beklenmiyor."
+                    },
+                )
+            }
             return listOf(
                 when (a.briefingTime) {
                     BriefingTime.MORNING -> "Bugün için yağış beklenmiyor."

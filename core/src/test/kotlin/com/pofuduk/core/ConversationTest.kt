@@ -12,6 +12,7 @@ import com.pofuduk.core.datetime.ForecastDateResolver
 import com.pofuduk.core.datetime.TurkishFormatting
 import com.pofuduk.core.mock.MockWeatherData
 import com.pofuduk.core.mock.MockWeatherData.Scenario
+import com.pofuduk.core.model.WeatherCondition
 import com.pofuduk.core.model.WeatherDataSource
 import com.pofuduk.core.util.localInstant
 import java.time.ZoneId
@@ -147,6 +148,19 @@ class ConversationFlowTest {
         assertTrue(evening.startsWith("Bu akşam"), evening)
         val tomorrow = answers.answer(m.interpret("Yarın hava nasıl?", now), snapshot(), now)
         assertEquals(1, tomorrow.sentences.count { it.startsWith("Yarın") }, tomorrow.fullText)
+    }
+
+    @Test fun rainingNowButDryLaterIsNotToldNoPrecipitation() {
+        val sunny = snapshot(Scenario.SUNNY)
+        var s = sunny.copy(current = sunny.current.copy(condition = WeatherCondition.THUNDERSTORM))
+        val today = answers.answer(ConversationManager().interpret("Bugün yağmur var mı?", now), s, now).fullText
+        assertTrue(today.contains("Şu an yağış var ama sonraki saatlerde başka yağış beklenmiyor."), today)
+        val tomorrow = answers.answer(ConversationManager().interpret("Yarın yağmur var mı?", now), s, now).fullText
+        assertTrue(tomorrow.contains("Yarın yağış beklenmiyor."), tomorrow)
+        s = s.copy(current = s.current.copy(condition = WeatherCondition.CLOUDY))
+        val dry = answers.answer(ConversationManager().interpret("Bugün yağmur var mı?", now), s, now).fullText
+        assertFalse(dry.contains("Şu an yağış"), dry)
+        assertTrue(dry.contains("yağış beklenmiyor"), dry)
     }
 
     @Test fun noRainSaysSo() {

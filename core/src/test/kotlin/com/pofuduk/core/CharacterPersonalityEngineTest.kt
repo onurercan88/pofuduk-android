@@ -142,6 +142,17 @@ class CharacterPersonalityEngineTest {
         assertTrue(text.contains("Yarın sıcaklık 9 ile 14 derece arasında; yağış bekleniyor, ihtimali yüzde 80."), text)
     }
 
+    @Test fun precipitationNowWithDryEveningDoesNotContradict() {
+        // Seen on a device: "hava gök gürültülü sağanaklı" followed by "Bu akşam için yağış beklenmiyor."
+        val at = TestClock.date(18)
+        val base = MockWeatherData.snapshot(Scenario.SUNNY, at)
+        val snap = base.copy(current = base.current.copy(condition = WeatherCondition.THUNDERSTORM))
+        val text = CharacterPersonalityEngine().briefing(summary.analyze(snap, at)).fullText
+        assertTrue(text.contains("gök gürültülü sağanaklı"), text)
+        assertFalse(text.contains("Bu akşam için yağış beklenmiyor"), text)
+        assertTrue(text.contains("Şu anki yağışın ardından bu akşam başka yağış beklenmiyor."), text)
+    }
+
     @Test fun turkishLocative() {
         assertEquals("İstanbul'da", TurkishGrammar.locative("İstanbul"))
         assertEquals("İzmir'de", TurkishGrammar.locative("İzmir"))
