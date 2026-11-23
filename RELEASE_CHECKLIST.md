@@ -33,8 +33,10 @@ URL: https://onurercan88.github.io/pofuduk-android/gizlilik.html
 ## 4. Play Console (you)
 Status 2026-11-23: personal developer account "Pofuduk Apps" verified (identity: address proof needed, ID card alone was
 rejected; phone verified). App created: "Pofuduk: Konuşan Hava Durumu", `com.pofuduk.app`, Türkçe, App, Free,
-Play App Signing terms accepted, automatic protection (installer check) on by default. Next: set-up tasks on the app
-dashboard (app content, store listing), then internal/closed testing.
+Play App Signing terms accepted, automatic protection (installer check) on by default. App content declarations and
+store listing (texts + graphics, AI label: none) saved. Internal testing release 1 (1.0.0) published to the email
+list "Pofuduk iç test"; join link https://play.google.com/apps/internaltest/4700048428489224599.
+Next: real-device checks (5.1), then the closed test (Turkey, ≥ 12 testers, 14 days).
 1. Developer account (personal accounts: identity verification; new personal accounts must run a **closed test with ≥ 12
    testers for 14 days** before production access).
 2. Create app: name, default language Türkçe, App, Free.

@@ -74,7 +74,11 @@ Updated: 2026-11-20
 
 ## Open
 - [x] Privacy policy live: https://onurercan88.github.io/pofuduk-android/gizlilik.html (GitHub Pages, `docs/`)
-- [ ] (you) Upload keystore, Play Console account/app, closed test (12 testers / 14 days)
+- [x] Upload keystore, Play Console account + app, app content, store listing (2026-11-23)
+- [x] Internal testing: 1 (1.0.0) live for the "Pofuduk iç test" list (3), join link
+      https://play.google.com/apps/internaltest/4700048428489224599 (2026-11-23)
+- [ ] (you) Closed test (12 testers / 14 days), then production access
+- [ ] Upload native debug symbols (Play warning; `ndk { debugSymbolLevel = "FULL" }`)
 - [ ] Travel abroad: Android Geocoder gives no time zone → Turkey-only search for now
 - [ ] Alarms are cleared by the system on reboot/force-stop; future ones come back with the next refresh, a due one in that gap is lost
 - [ ] Emulator location fix took ~20 s when the last fix was old; measure on a real phone (fused provider)
