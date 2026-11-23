@@ -38,7 +38,8 @@ store listing (texts + graphics, AI label: none) saved. Internal testing release
 list "Pofuduk iç test"; join link https://play.google.com/apps/internaltest/4700048428489224599.
 Closed testing – Alpha set up (Türkiye only, same email list, feedback → GitHub issues, release 1 (1.0.0)); all 14
 changes sent to Google for review 2026-11-23 (managed publishing off: goes live when approved). Tester opt-in:
-https://play.google.com/apps/testing/com.pofuduk.app. Next: add ≥ 12 (better 15–20) testers to the list, 14 days.
+https://play.google.com/apps/testing/com.pofuduk.app. Approved the same day: closed track active ("Available to selected
+testers", 2026-11-23 14:54); list has 12 testers. Next: testers opt in, 14 days, then apply for production.
 1. Developer account (personal accounts: identity verification; new personal accounts must run a **closed test with ≥ 12
    testers for 14 days** before production access).
 2. Create app: name, default language Türkçe, App, Free.

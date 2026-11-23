@@ -77,7 +77,7 @@ Updated: 2026-11-20
 - [x] Upload keystore, Play Console account + app, app content, store listing (2026-11-23)
 - [x] Internal testing: 1 (1.0.0) live for the "Pofuduk iç test" list (3), join link
       https://play.google.com/apps/internaltest/4700048428489224599 (2026-11-23)
-- [x] Closed test track (Türkiye, same list) + app sent for Google review (2026-11-23)
+- [x] Closed test track (Türkiye, same list, 12 testers) approved and active (2026-11-23)
 - [ ] (you) ≥ 12 testers opted in for 14 days, then production access
 - [ ] Upload native debug symbols (Play warning; `ndk { debugSymbolLevel = "FULL" }`)
 - [ ] Travel abroad: Android Geocoder gives no time zone → Turkey-only search for now
