@@ -82,6 +82,10 @@ Updated: 2026-11-20
       back); "Ses tonu" (Pofuduk 1.12 default / Doğal 1.0 — Android had no pitch before); hint + "Ses verilerini aç" when only a
       basic Turkish voice is in use; best voice re-picked on resume; clearer MGM card text
 - [x] core tests: 200 passing (+1 opt-in live skipped); emulator: live Apple Weather forecast, settings tone picker
+- [x] Home layout (design items 2 + 4): current-conditions card right under the character; ask field pinned to the bottom
+      (safe-drawing insets incl. IME + nav bar), suggestions stay in the scroll; hourly row with Canvas weather icons
+      (day/night from sunrise/sunset), edge fade and a peeking next hour. Checked light/dark/1.5× font on the emulator;
+      docked soft keyboard not verified (emulator Gboard only floats)
 
 ## Open
 - [x] Privacy policy live: https://onurercan88.github.io/pofuduk-android/gizlilik.html (GitHub Pages, `docs/`)

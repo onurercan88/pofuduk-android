@@ -19,12 +19,17 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -50,6 +55,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
@@ -134,38 +141,62 @@ fun HomeScreen(state: HomeUiState, viewModel: HomeViewModel) {
                 .fillMaxSize()
                 .background(Brush.verticalGradient(backgroundGradient(theme, palette.isDark))),
         ) {
+            val loaded = state.loadState == LoadState.Loaded
             Column(
                 Modifier
                     .fillMaxSize()
-                    .windowInsetsPadding(WindowInsets.safeDrawing)
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
             ) {
-                Header(state, onToggleSound = viewModel::toggleSound, onChangePlace = viewModel::openLocationPicker, onSettings = viewModel::openSettings)
-                CharacterView(
-                    state.appearance,
-                    Modifier.clickable(onClickLabel = "Pofuduk'a dokun", role = Role.Button) { viewModel.onCharacterTap() },
-                )
-                SubtitleCard(state)
-                when (val load = state.loadState) {
-                    is LoadState.NeedsLocation -> LocationPromptCard(load.prompt, askLocation, openSettings, viewModel::openLocationPicker)
-                    is LoadState.Failed -> FailedCard(load.reason, viewModel::refresh, viewModel::openLocationPicker)
-                    LoadState.Loading -> Text("Hava durumuna bakıyorum…", color = palette.inkSecondary)
-                    LoadState.Loaded -> {
-                        SpeechControls(state, onPlay = viewModel::playBriefing, onStop = viewModel::stop)
-                        AskBar(state, onInput = viewModel::onInputChange, onSend = viewModel::send, onMic = onMic, onSuggestion = viewModel::ask)
-                        NowCard(state)
-                        if (state.advice.isNotEmpty()) AdviceCard(state.advice)
-                        state.clothing?.let { ClothingCard(it.items.map { i -> "${i.symbol} ${i.name}" }, it.summary) }
-                        HourlyCard(state)
-                        EntryCard("🧳", "Seyahat Hava Durumu", "Gideceğin yerin havasını öğren", viewModel::openTravel)
-                        MGMStatusCard()
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Header(state, onToggleSound = viewModel::toggleSound, onChangePlace = viewModel::openLocationPicker, onSettings = viewModel::openSettings)
+                    CharacterView(
+                        state.appearance,
+                        Modifier.clickable(onClickLabel = "Pofuduk'a dokun", role = Role.Button) { viewModel.onCharacterTap() },
+                    )
+                    // The weather now sits right under the character, above the fold.
+                    if (loaded) NowCard(state)
+                    SubtitleCard(state)
+                    when (val load = state.loadState) {
+                        is LoadState.NeedsLocation -> LocationPromptCard(load.prompt, askLocation, openSettings, viewModel::openLocationPicker)
+                        is LoadState.Failed -> FailedCard(load.reason, viewModel::refresh, viewModel::openLocationPicker)
+                        LoadState.Loading -> Text("Hava durumuna bakıyorum…", color = palette.inkSecondary)
+                        LoadState.Loaded -> {
+                            SpeechControls(state, onPlay = viewModel::playBriefing, onStop = viewModel::stop)
+                            if (state.inputText.isEmpty() && !state.isListening) Suggestions(onSuggestion = viewModel::ask)
+                            if (state.advice.isNotEmpty()) AdviceCard(state.advice)
+                            state.clothing?.let { ClothingCard(it.items.map { i -> "${i.symbol} ${i.name}" }, it.summary) }
+                            HourlyCard(state)
+                            EntryCard("🧳", "Seyahat Hava Durumu", "Gideceğin yerin havasını öğren", viewModel::openTravel)
+                            MGMStatusCard()
+                        }
                     }
+                    state.demoScenario?.let { ScenarioPicker(it, viewModel::setDemo) }
+                    Footer(state, onDemo = viewModel::setDemo)
                 }
-                state.demoScenario?.let { ScenarioPicker(it, viewModel::setDemo) }
-                Footer(state, onDemo = viewModel::setDemo)
+                if (loaded) {
+                    // Pinned to the bottom; stays above the keyboard and the navigation bar.
+                    AskBar(
+                        state, onInput = viewModel::onInputChange, onSend = viewModel::send, onMic = onMic,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(palette.surfaceStrong.copy(alpha = 1f))
+                            .drawBehind {
+                                drawLine(palette.inkSecondary.copy(alpha = 0.25f), Offset.Zero, Offset(size.width, 0f), 1.dp.toPx())
+                            }
+                            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                } else {
+                    Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.safeDrawing))
+                }
             }
         }
         if (state.showSettings) {
@@ -323,26 +354,29 @@ private fun SpeechControls(state: HomeUiState, onPlay: () -> Unit, onStop: () ->
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun AskBar(state: HomeUiState, onInput: (String) -> Unit, onSend: () -> Unit, onMic: () -> Unit, onSuggestion: (String) -> Unit) {
+private fun Suggestions(onSuggestion: (String) -> Unit) {
+    val palette = LocalPalette.current
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        SUGGESTIONS.forEach { s ->
+            Text(
+                s, color = palette.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier
+                    .background(palette.surface, RoundedCornerShape(50))
+                    .heightIn(min = 48.dp)
+                    .clickable(role = Role.Button) { onSuggestion(s) }
+                    .padding(horizontal = 14.dp, vertical = 14.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun AskBar(state: HomeUiState, onInput: (String) -> Unit, onSend: () -> Unit, onMic: () -> Unit, modifier: Modifier = Modifier) {
     val palette = LocalPalette.current
     val text = state.inputText
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         state.microphoneMessage?.let {
             Text(it, color = palette.inkSecondary, fontSize = 13.sp, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
-        }
-        if (text.isEmpty() && !state.isListening) {
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                SUGGESTIONS.forEach { s ->
-                    Text(
-                        s, color = palette.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier
-                            .background(palette.surface, RoundedCornerShape(50))
-                            .heightIn(min = 48.dp)
-                            .clickable(role = Role.Button) { onSuggestion(s) }
-                            .padding(horizontal = 14.dp, vertical = 14.dp),
-                    )
-                }
-            }
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(
@@ -370,6 +404,8 @@ private fun AskBar(state: HomeUiState, onInput: (String) -> Unit, onSend: () -> 
             }
             Button(
                 onClick = onMic, colors = micColors,
+                // Outlined like the text field, so it stays visible on the pinned bar's surface.
+                border = if (state.isListening) null else BorderStroke(1.dp, palette.inkSecondary),
                 modifier = Modifier.heightIn(min = 48.dp).semantics {
                     contentDescription = if (state.isListening) "Dinlemeyi bitir" else "Sesli sor"
                 },
@@ -463,13 +499,34 @@ private fun HourlyCard(state: HomeUiState) {
     if (hours.isEmpty()) return
     HomeCard {
         Text("Saatlik", color = palette.ink, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() })
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        val scroll = rememberScrollState()
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .edgeFade(fadeStart = scroll.canScrollBackward, fadeEnd = scroll.canScrollForward)
+                .horizontalScroll(scroll),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
             hours.forEach { h ->
                 val rain = h.precipitationProbability?.takeIf { it >= 30 }
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.semantics(mergeDescendants = true) {}) {
+                val night = isNight(h.time, snapshot.daily, zone)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    // Fixed width: the next hour peeks in at the edge, so the row reads as scrollable.
+                    modifier = Modifier.widthIn(min = 56.dp).semantics(mergeDescendants = true) {},
+                ) {
                     Text(TurkishFormatting.clockTime(h.time, zone), color = palette.inkSecondary, fontSize = 13.sp)
+                    WeatherIcon(
+                        h.condition, night, Modifier.size(28.dp).semantics {
+                            contentDescription = TurkishFormatting.conditionName(h.condition, !night)
+                        },
+                    )
                     Text(TurkishFormatting.shortTemperature(h.temperature), color = palette.ink, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                    Text(rain?.let { "☔ %$it" } ?: " ", color = palette.accent, fontSize = 12.sp)
+                    Text(
+                        rain?.let { "%$it" } ?: " ", color = palette.accent, fontSize = 12.sp,
+                        modifier = Modifier.semantics { if (rain != null) contentDescription = "yağış ihtimali yüzde $rain" },
+                    )
                 }
             }
         }
