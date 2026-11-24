@@ -213,6 +213,9 @@ private fun Header(state: HomeUiState, onToggleSound: () -> Unit, onChangePlace:
                 if (state.demoScenario != null) Badge("Örnek veri")
                 if (state.isStale) Badge("Güncel olmayabilir")
             }
+            if (state.isLastKnownLocation) {
+                Row(Modifier.padding(top = 4.dp)) { Badge("Son bilinen konum · yenilemek için aşağı çek") }
+            }
         }
         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
             OutlinedButton(onClick = onToggleSound, modifier = Modifier.heightIn(min = 48.dp), border = BorderStroke(1.dp, palette.accent)) {

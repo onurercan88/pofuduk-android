@@ -43,6 +43,20 @@ data class PrecipitationOutlook(
     val durationHours: Int get() = max(1, (end.secondsSince(start) / 3600).roundedInt())
 }
 
+/**
+ * It is precipitating now, but the forecast's first wet period starts at a later hour (the forecast missed the
+ * current shower). Decides how the later period is told, so the briefing never says
+ * "yağmur saat 9'da başlayacak" while it is already raining.
+ */
+enum class LaterPrecipitationRelation {
+    /** No real break is forecast: it is the same precipitation going on. */
+    CONTINUES,
+    /** It gets heavier (or turns into a thunderstorm) from the period's start. */
+    INTENSIFIES,
+    /** At least two dry hours are forecast first: it may stop and start again. */
+    RESUMES,
+}
+
 data class WindOutlook(val maxSpeedKmh: Double, val maxGustKmh: Double?, val isStrong: Boolean)
 
 /** Part of the day the briefing is given in. Decides which hours are worth talking about. */
@@ -92,6 +106,8 @@ data class WeatherAnalysis(
     val temperatureSwingIsNotable: Boolean,
     /** First continuous precipitation period in the rest of today, if any. */
     val precipitation: PrecipitationOutlook?,
+    /** Set when it is precipitating now and [precipitation] starts at a later hour. */
+    val laterPrecipitation: LaterPrecipitationRelation?,
     /** Hourly data covers the rest of today, so "no rain expected" can be stated. */
     val hasHourlyCoverage: Boolean,
     val wind: WindOutlook?,
@@ -160,6 +176,7 @@ class WeatherSummaryEngine(val thresholds: WeatherThresholds = WeatherThresholds
             feelsLikeIsNotable = feelsNotable,
             temperatureSwingIsNotable = swingNotable,
             precipitation = precipitation,
+            laterPrecipitation = laterPrecipitationRelation(current, precipitation, remaining, hourStart),
             hasHourlyCoverage = coverage,
             wind = wind,
             uvMax = uvMax,
@@ -262,6 +279,28 @@ class WeatherSummaryEngine(val thresholds: WeatherThresholds = WeatherThresholds
         )
     }
 
+    /**
+     * See [LaterPrecipitationRelation]. null unless it is precipitating now and the outlook starts after the
+     * current hour. The forecast already missed the current precipitation, so a single dry hour is not trusted
+     * as a break; two or more are.
+     */
+    fun laterPrecipitationRelation(
+        current: CurrentWeather,
+        outlook: PrecipitationOutlook?,
+        hours: List<HourlyForecast>,
+        hourStart: Instant,
+    ): LaterPrecipitationRelation? {
+        if (!current.condition.isPrecipitation || outlook == null || !outlook.start.isAfter(hourStart)) return null
+        if (strength(outlook) > strength(current.condition)) return LaterPrecipitationRelation.INTENSIFIES
+        var dryRun = 0
+        var longestDryRun = 0
+        for (hour in hours.filter { it.time.isAfter(hourStart) && it.time.isBefore(outlook.start) }) {
+            dryRun = if (isWetCandidate(hour)) 0 else dryRun + 1
+            longestDryRun = max(longestDryRun, dryRun)
+        }
+        return if (longestDryRun >= 2) LaterPrecipitationRelation.RESUMES else LaterPrecipitationRelation.CONTINUES
+    }
+
     internal fun intensity(run: List<HourlyForecast>, maxRate: Double?): PrecipitationIntensity {
         if (maxRate != null) {
             if (maxRate >= thresholds.heavyRainMmPerHour) return PrecipitationIntensity.HEAVY
@@ -289,6 +328,24 @@ class WeatherSummaryEngine(val thresholds: WeatherThresholds = WeatherThresholds
          * The look shows the weather *now*; rain expected later is told in words, not shown.
          */
         const val THEME_PRECIPITATION_LEAD_TIME: Double = 60.0 * 60
+
+        /** drizzle 1 · rain/snow/sleet 2 · heavy 3 · thunderstorm 4 */
+        internal fun strength(condition: WeatherCondition): Int = when (condition) {
+            WeatherCondition.DRIZZLE -> 1
+            WeatherCondition.HEAVY_RAIN -> 3
+            WeatherCondition.THUNDERSTORM -> 4
+            else -> if (condition.isPrecipitation) 2 else 0
+        }
+
+        /** Unknown intensity counts as ordinary (2) so it never claims "heavier". */
+        internal fun strength(outlook: PrecipitationOutlook): Int {
+            if (outlook.kind == PrecipitationKind.THUNDERSTORM) return 4
+            return when (outlook.intensity) {
+                PrecipitationIntensity.HEAVY -> 3
+                PrecipitationIntensity.LIGHT -> 1
+                PrecipitationIntensity.MODERATE, PrecipitationIntensity.UNKNOWN -> 2
+            }
+        }
 
         fun theme(
             current: CurrentWeather,

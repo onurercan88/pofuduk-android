@@ -28,6 +28,7 @@ import com.pofuduk.core.model.WarningAvailability
 import com.pofuduk.core.model.WarningLevel
 import com.pofuduk.core.store.InMemoryKeyValueStore
 import kotlinx.coroutines.test.runTest
+import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -79,6 +80,29 @@ class LocationResolverTest {
         assertEquals(
             LocationResolution.NeedsUserChoice(LocationIssue.GPS_UNAVAILABLE),
             resolve(LocationMode.AUTOMATIC, LocationPermission.AUTHORIZED, gpsFails = LocationException(LocationError.UNAVAILABLE)),
+        )
+    }
+
+    /** A failed fix falls back to the last GPS place if it is recent (labelled), never to an old or non-GPS one. */
+    @Test fun failedFixUsesRecentLastKnownPlace() = runTest {
+        val now = Instant.ofEpochSecond(1_800_000_000)
+        val last = gpsPlace.copy(source = LocationSource.GPS)
+        suspend fun run(preference: LocationPreference, error: Exception = LocationException(LocationError.UNAVAILABLE)) =
+            resolver.resolve(preference, LocationPermission.AUTHORIZED, gps = { throw error }, ip = null, now = now)
+
+        val recent = assertIs<LocationResolution.Resolved>(
+            run(LocationPreference(lastPlace = last, lastPlaceAt = now.minusSeconds(3 * 3600))),
+        ).place
+        assertEquals("Kadıköy", recent.name)
+        assertEquals(LocationSource.LAST_KNOWN, recent.source)
+
+        val unavailable = LocationResolution.NeedsUserChoice(LocationIssue.GPS_UNAVAILABLE)
+        assertEquals(unavailable, run(LocationPreference(lastPlace = last, lastPlaceAt = now.minusSeconds(13 * 3600))))
+        assertEquals(unavailable, run(LocationPreference(lastPlace = last)))
+        assertEquals(unavailable, run(LocationPreference(lastPlace = last.copy(source = LocationSource.MANUAL), lastPlaceAt = now)))
+        assertEquals(
+            LocationResolution.NeedsUserChoice(LocationIssue.PERMISSION_DENIED),
+            run(LocationPreference(lastPlace = last, lastPlaceAt = now), LocationException(LocationError.PERMISSION_DENIED)),
         )
     }
 
@@ -188,7 +212,9 @@ class MGMWarningTest {
         val r = MGMAlertRepository(ConfiguredMGMWarningProvider(null, StubHttpClient())).warnings(istanbul, now)
         val u = assertIs<WarningAvailability.Unavailable>(r)
         assertEquals("https://www.mgm.gov.tr/meteouyari/turkiye.aspx", u.officialPage)
-        assertTrue(u.reason.contains("yetkili"))
+        // Must not read like a broken connection, and must point to MGM's page.
+        assertFalse(u.reason.contains("bağlantı"), u.reason)
+        assertTrue(u.reason.contains("MGM'nin sayfasından"), u.reason)
     }
 
     @Test fun feedFailureIsUnavailableNotEmpty() = runTest {

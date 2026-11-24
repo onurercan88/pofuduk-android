@@ -22,7 +22,11 @@ import com.pofuduk.core.model.LocationPermission
 import com.pofuduk.core.model.LocationPreference
 import com.pofuduk.core.model.LocationSource
 import com.pofuduk.core.model.Place
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
@@ -58,16 +62,33 @@ class DeviceLocationProvider(context: Context) {
         else -> LocationPermission.NOT_DETERMINED
     }
 
+    /**
+     * Everyone asking while a request runs shares it. A second caller (e.g. pull-to-refresh during the launch load)
+     * joins it instead of starting over; a cancelled caller never cancels the shared request.
+     */
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var inFlight: Deferred<Place>? = null
+
     suspend fun currentPlace(): Place {
         if (!hasPermission()) throw LocationException(LocationError.PERMISSION_DENIED)
         if (!servicesEnabled()) throw LocationException(LocationError.UNAVAILABLE)
-        // Weather needs ~1 km: a recent fix is enough; otherwise ask each provider briefly, and as a last resort
-        // accept an older fix (a forecast for where the user was 2 h ago beats no forecast).
-        val location = lastKnown(maxAgeMinutes = 15) ?: freshLocation() ?: lastKnown(maxAgeMinutes = 120)
+        val request = synchronized(this) {
+            inFlight?.takeIf { it.isActive } ?: scope.async { locate() }.also { inFlight = it }
+        }
+        return request.await()
+    }
+
+    private suspend fun locate(): Place {
+        // Weather needs the district/city: a fresh system fix is used right away; otherwise ask the providers (one
+        // budget for all), and on timeout a cached fix up to 30 min old still beats "konumunu belirleyemedim".
+        val location = lastKnown(FRESH_FIX_AGE_MINUTES) ?: freshLocation() ?: lastKnown(FALLBACK_FIX_AGE_MINUTES)
             ?: throw LocationException(LocationError.UNAVAILABLE)
         val coordinate = Coordinate(location.latitude, location.longitude)
         return LocationPreference.coarsened(place(coordinate))
     }
+
+    /** Coarse fixes (approximate location) are a few km wide; a forecast only needs the district/city. */
+    private fun Location.isUsable(): Boolean = !hasAccuracy() || accuracy <= MAX_USABLE_ACCURACY_M
 
     private val providers: List<String>
         get() = buildList {
@@ -80,7 +101,7 @@ class DeviceLocationProvider(context: Context) {
     private fun lastKnown(maxAgeMinutes: Long): Location? {
         val maxAgeNanos = maxAgeMinutes * 60 * 1_000_000_000
         return providers.mapNotNull { runCatching { manager.getLastKnownLocation(it) }.getOrNull() }
-            .filter { SystemClock.elapsedRealtimeNanos() - it.elapsedRealtimeNanos < maxAgeNanos }
+            .filter { SystemClock.elapsedRealtimeNanos() - it.elapsedRealtimeNanos < maxAgeNanos && it.isUsable() }
             .maxByOrNull { it.elapsedRealtimeNanos }
     }
 
@@ -98,14 +119,20 @@ class DeviceLocationProvider(context: Context) {
                     } catch (e: SecurityException) {
                         null // e.g. GPS with coarse-only permission before Android 12
                     }
-                    if (location != null) send(location)
+                    if (location != null && location.isUsable()) send(location)
                 }
             }
         }.firstOrNull()
     }
 
     private companion object {
-        const val FRESH_BUDGET_MS = 10_000L
+        /** How long to wait for a fix. A cold start indoors can take several seconds. */
+        const val FRESH_BUDGET_MS = 12_000L
+        /** A system-cached fix this recent is used right away. */
+        const val FRESH_FIX_AGE_MINUTES = 2L
+        /** When no fresh fix arrives in time, a cached fix up to this old is still used. */
+        const val FALLBACK_FIX_AGE_MINUTES = 30L
+        const val MAX_USABLE_ACCURACY_M = 25_000f
     }
 
     @SuppressLint("MissingPermission")

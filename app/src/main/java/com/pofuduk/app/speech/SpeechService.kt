@@ -5,6 +5,10 @@ import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
+import com.pofuduk.core.model.VoiceTone
+import com.pofuduk.core.speech.SpeechTextNormalizer
+import com.pofuduk.core.speech.SpokenText
+import com.pofuduk.core.speech.TextRange
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -26,9 +30,16 @@ interface SpeechListener {
 /** An installed, offline Turkish voice the user can pick. */
 data class VoiceOption(val name: String, val label: String)
 
-class SpeechService(context: Context, private val listener: SpeechListener, preferredVoice: String? = null) {
+class SpeechService(
+    context: Context,
+    private val listener: SpeechListener,
+    preferredVoice: String? = null,
+    @Volatile private var pitch: Float = VoiceTone.POFUDUK.pitchMultiplier,
+) {
     private val session = AtomicInteger(0)
     @Volatile private var preferredVoice: String? = preferredVoice
+    /** Spoken forms of the current session's sentences (subtitle ↔ spoken word ranges). */
+    @Volatile private var spoken: List<SpokenText> = emptyList()
     @Volatile private var ready = false
     @Volatile var isTurkishAvailable = false
         private set
@@ -50,7 +61,10 @@ class SpeechService(context: Context, private val listener: SpeechListener, pref
             }
 
             override fun onRangeStart(utteranceId: String, start: Int, end: Int, frame: Int) {
-                parse(utteranceId)?.let { listener.onWord(it, start, end) }
+                val index = parse(utteranceId) ?: return
+                // The engine reports ranges in the spoken text; map them back to the subtitle sentence.
+                val r = spoken.getOrNull(index)?.subtitleRange(TextRange(start, end - start)) ?: TextRange(start, end - start)
+                listener.onWord(index, r.location, r.location + r.length)
             }
 
             override fun onDone(utteranceId: String) {
@@ -103,6 +117,22 @@ class SpeechService(context: Context, private val listener: SpeechListener, pref
         (voices.firstOrNull { it.name == preferredVoice } ?: voices.firstOrNull())?.let { tts.voice = it }
     }
 
+    /** Briefing/answer pitch ([com.pofuduk.core.model.VoiceTone.pitchMultiplier]). */
+    fun setPitch(pitch: Float) {
+        this.pitch = pitch
+    }
+
+    /**
+     * True when the voice in use is an installed Turkish voice below "high" quality: Settings then explains how to
+     * get a more natural one from the TTS engine's voice data.
+     */
+    fun canImproveVoice(): Boolean {
+        if (!ready || !isTurkishAvailable) return false
+        val active = runCatching { tts.voice }.getOrNull() ?: return false
+        val installed = turkishVoices().firstOrNull { it.name == active.name } ?: return false
+        return installed.quality < Voice.QUALITY_HIGH
+    }
+
     /** Sentence index for utterances of the current session; null for stale or foreign utterances. */
     private fun parse(utteranceId: String): Int? {
         val parts = utteranceId.split(':')
@@ -113,11 +143,15 @@ class SpeechService(context: Context, private val listener: SpeechListener, pref
     /** Speaks [sentences] in order. [rate] 1.0 = normal. Returns false when speech is unavailable. */
     fun speak(sentences: List<String>, rate: Double): Boolean {
         if (!ready || !isTurkishAvailable) return false
+        // Subtitles keep the written form; the voice gets the speech-friendly one ("14.00" → "14").
+        val texts = sentences.map(SpeechTextNormalizer::spoken)
+        spoken = texts
         val id = session.incrementAndGet()
         tts.stop()
         tts.setSpeechRate(rate.toFloat())
-        sentences.forEachIndexed { i, s ->
-            tts.speak(s, TextToSpeech.QUEUE_ADD, Bundle(), "$id:$i")
+        tts.setPitch(pitch)
+        texts.forEachIndexed { i, s ->
+            tts.speak(s.text, TextToSpeech.QUEUE_ADD, Bundle(), "$id:$i")
         }
         return true
     }
@@ -126,6 +160,7 @@ class SpeechService(context: Context, private val listener: SpeechListener, pref
     fun speakAside(text: String, rate: Double) {
         if (!ready || !isTurkishAvailable || tts.isSpeaking) return
         tts.setSpeechRate(rate.toFloat())
+        tts.setPitch(pitch)
         tts.speak(text, TextToSpeech.QUEUE_FLUSH, Bundle(), "aside")
     }
 

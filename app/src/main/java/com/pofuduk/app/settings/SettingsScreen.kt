@@ -6,6 +6,7 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.os.Build
 import android.provider.Settings
+import android.speech.tts.TextToSpeech
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -66,6 +67,7 @@ import com.pofuduk.core.model.BriefingLength
 import com.pofuduk.core.model.PersonalityStyle
 import com.pofuduk.core.model.SubtitleSize
 import com.pofuduk.core.model.UserPreferences
+import com.pofuduk.core.model.VoiceTone
 import kotlin.math.roundToInt
 import com.pofuduk.app.notifications.NotificationState
 import com.pofuduk.app.ui.theme.LocalPalette
@@ -99,6 +101,23 @@ fun SettingsDialog(
     val uri = LocalUriHandler.current
     var confirmDelete by remember { mutableStateOf(false) }
     val voices = remember(home.speechAvailable) { viewModel.availableVoices() }
+    val canImproveVoice = remember(home.speechAvailable, user.voiceName) { viewModel.canImproveVoice() }
+    // The TTS engine's own voice-data screen (download higher-quality voices); TTS settings as a fallback.
+    val openVoiceData = {
+        val intents = listOf(
+            Intent(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA),
+            Intent("com.android.settings.TTS_SETTINGS"),
+        )
+        intents.firstOrNull { intent ->
+            try {
+                context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                true
+            } catch (_: ActivityNotFoundException) {
+                false
+            }
+        }
+        Unit
+    }
     // What to do once the notification permission prompt (Android 13+) is answered.
     var afterPermission by remember { mutableStateOf<(() -> Unit)?>(null) }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
@@ -165,6 +184,19 @@ fun SettingsDialog(
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Chip("Otomatik (en iyi)", user.voiceName == null) { viewModel.updatePreferences { it.copy(voiceName = null) } }
                         voices.forEach { v -> Chip(v.label, user.voiceName == v.name) { viewModel.updatePreferences { it.copy(voiceName = v.name) } } }
+                    }
+                    if (canImproveVoice) {
+                        Note(
+                            "Daha doğal bir ses için: metin okuma motorunun ses verilerinden Türkçe için daha yüksek kaliteli " +
+                                "bir sesi indir. Pofuduk onu kendiliğinden kullanır.",
+                        )
+                        TextButton(onClick = openVoiceData, modifier = Modifier.heightIn(min = 48.dp)) {
+                            Text("Ses verilerini aç", color = palette.accent)
+                        }
+                    }
+                    Text("Ses tonu", color = palette.ink, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        VoiceTone.entries.forEach { t -> Chip(t.turkishName, user.voiceTone == t) { viewModel.updatePreferences { it.copy(voiceTone = t) } } }
                     }
                 }
                 Text("Konuşma hızı: ${rateName(user.clampedSpeechRate)}", color = palette.ink, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))

@@ -3,7 +3,9 @@ package com.pofuduk.core.conversation
 import com.pofuduk.core.datetime.ForecastDateResolver
 import com.pofuduk.core.datetime.TurkishFormatting
 import com.pofuduk.core.datetime.TurkishGrammar
+import com.pofuduk.core.engine.CharacterPersonalityEngine
 import com.pofuduk.core.engine.ClothingRecommendationEngine
+import com.pofuduk.core.engine.LaterPrecipitationRelation
 import com.pofuduk.core.engine.PrecipitationIntensity
 import com.pofuduk.core.engine.PrecipitationKind
 import com.pofuduk.core.engine.WeatherSummaryEngine
@@ -12,6 +14,7 @@ import com.pofuduk.core.model.Briefing
 import com.pofuduk.core.model.CharacterMood
 import com.pofuduk.core.model.DailyForecast
 import com.pofuduk.core.model.HourlyForecast
+import com.pofuduk.core.model.WeatherCondition
 import com.pofuduk.core.model.WeatherSnapshot
 import com.pofuduk.core.model.WeatherTheme
 import com.pofuduk.core.util.hour
@@ -196,6 +199,35 @@ class WeatherAnswerEngine(val thresholds: WeatherThresholds = WeatherThresholds.
                 else -> "yağmur"
             }
             val start = TurkishFormatting.clockTime(p.start, zone)
+            // Precipitating now while the forecast's period starts later: don't announce a "start".
+            val current = c.snapshot.current
+            val relation = if (c.precipitatingNow) {
+                summary.laterPrecipitationRelation(current, p, hours, hours.first().time)
+            } else {
+                null
+            }
+            val nowNoun = CharacterPersonalityEngine.precipitationNoun(current.condition)
+            if (relation != null && nowNoun != null) {
+                if (!p.isLikely) {
+                    val prob = p.maxProbability?.let { " yüzde $it civarında" } ?: ""
+                    return listOf("Şu an $nowNoun var. Saat $start sonrasında da $noun ihtimali$prob.")
+                }
+                return listOf(
+                    when (relation) {
+                        LaterPrecipitationRelation.CONTINUES -> "Şu an $nowNoun var ve sonraki saatlerde de sürmesi bekleniyor."
+                        LaterPrecipitationRelation.INTENSIFIES -> {
+                            val change = if (p.kind == PrecipitationKind.THUNDERSTORM && current.condition != WeatherCondition.THUNDERSTORM) {
+                                "gök gürültülü sağanağa dönmesi"
+                            } else {
+                                "kuvvetlenmesi"
+                            }
+                            "Şu an $nowNoun var; saat $start civarında $change bekleniyor."
+                        }
+                        LaterPrecipitationRelation.RESUMES ->
+                            "Şu an $nowNoun var; ara verip saat $start civarında yeniden başlaması bekleniyor."
+                    },
+                )
+            }
             if (!p.isLikely) {
                 val prob = p.maxProbability?.let { "yüzde $it civarında" } ?: "düşük"
                 return listOf("${c.label} yağış ihtimali $prob; kesin değil. En olası zaman saat $start civarı.")
@@ -231,15 +263,19 @@ class WeatherAnswerEngine(val thresholds: WeatherThresholds = WeatherThresholds.
 
     private fun umbrella(c: DayContext): List<String> {
         val rainInfo = rain(c, timing = true)
-        val p = if (c.hours.isEmpty()) null else summary.precipitationOutlook(c.hours)
-        if (p == null) {
-            val prob = c.daily?.precipitationProbability
-            if (prob != null && prob >= thresholds.possiblePrecipitationProbability) {
-                return listOf("Yanına bir şemsiye almanda fayda var.") + rainInfo
-            }
-            return if (c.hours.isEmpty() && c.daily == null) listOf(noData(c))
-            else listOf("Şemsiyeye gerek yok gibi görünüyor.") + rainInfo
+        // Same source as `rain`: hourly data decides when present. Today's daily probability also covers hours
+        // already past, so using it here would contradict "yağış beklenmiyor".
+        if (c.hours.isEmpty()) {
+            val prob = c.daily?.precipitationProbability ?: return listOf(noData(c))
+            return listOf(
+                if (prob >= thresholds.possiblePrecipitationProbability) "Yanına bir şemsiye almanda fayda var."
+                else "Şemsiyeye gerek yok gibi görünüyor.",
+            ) + rainInfo
         }
+        val p = summary.precipitationOutlook(c.hours)
+            ?: return listOf(
+                if (c.precipitatingNow) "Hemen çıkacaksan şemsiye iyi olur." else "Şemsiyeye gerek yok gibi görünüyor.",
+            ) + rainInfo
         return listOf(if (p.isLikely) "Evet, şemsiye almanı öneririm." else "Kesin değil ama yanına bir şemsiye alabilirsin.") + rainInfo
     }
 

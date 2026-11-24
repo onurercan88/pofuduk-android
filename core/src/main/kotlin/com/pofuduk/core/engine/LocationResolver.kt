@@ -12,6 +12,8 @@ import com.pofuduk.core.model.Place
 import com.pofuduk.core.store.JsonStore
 import com.pofuduk.core.store.KeyValueStore
 import kotlinx.coroutines.CancellationException
+import java.time.Duration
+import java.time.Instant
 
 /**
  * Decides how to obtain the place for the forecast. Pure policy, independent of weather providers.
@@ -24,6 +26,7 @@ class LocationResolver {
         permission: LocationPermission,
         gps: suspend () -> Place,
         ip: (suspend () -> Place)?,
+        now: Instant = Instant.now(),
     ): LocationResolution = when (preference.mode) {
         LocationMode.MANUAL -> preference.manualPlace?.let { LocationResolution.Resolved(it) }
             ?: LocationResolution.NeedsUserChoice(LocationIssue.NO_MANUAL_PLACE)
@@ -49,13 +52,35 @@ class LocationResolver {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: LocationException) {
-                LocationResolution.NeedsUserChoice(
-                    if (e.error == LocationError.PERMISSION_DENIED) LocationIssue.PERMISSION_DENIED else LocationIssue.GPS_UNAVAILABLE,
-                )
+                if (e.error == LocationError.PERMISSION_DENIED) {
+                    LocationResolution.NeedsUserChoice(LocationIssue.PERMISSION_DENIED)
+                } else {
+                    lastKnown(preference, now)
+                }
             } catch (e: Exception) {
-                LocationResolution.NeedsUserChoice(LocationIssue.GPS_UNAVAILABLE)
+                lastKnown(preference, now)
             }
         }
+    }
+
+    /**
+     * A device fix can fail now and then (indoors, cold start). Rather than "Konumunu belirleyemedim", the
+     * last GPS place is used if it was confirmed within [LAST_KNOWN_MAX_AGE], labelled "Son bilinen konum".
+     */
+    private fun lastKnown(preference: LocationPreference, now: Instant): LocationResolution {
+        val last = preference.lastPlace
+        val at = preference.lastPlaceAt
+        if (last != null && last.source == LocationSource.GPS && at != null) {
+            val age = Duration.between(at, now)
+            if (!age.isNegative && age <= LAST_KNOWN_MAX_AGE) {
+                return LocationResolution.Resolved(last.copy(source = LocationSource.LAST_KNOWN))
+            }
+        }
+        return LocationResolution.NeedsUserChoice(LocationIssue.GPS_UNAVAILABLE)
+    }
+
+    companion object {
+        val LAST_KNOWN_MAX_AGE: Duration = Duration.ofHours(12)
     }
 }
 

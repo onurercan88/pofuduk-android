@@ -21,7 +21,7 @@ Updated: 2026-11-20
 ## Done (Phase A2 — live forecast + location, 2026-11-20)
 - [x] Live Open-Meteo via `CachedWeatherRepository` (file cache in `cacheDir`, 30 min fresh, offline ≤ 6 h labelled "Güncel olmayabilir")
 - [x] Location: Pofuduk's explanation before the system prompt; `ACCESS_COARSE_LOCATION` only, foreground only, no Play Services;
-      fused → network → GPS with 8 s per provider, last fix ≤ 15 min (≤ 2 h as last resort); fix coarsened to 2 decimals before use
+      fused → network → GPS (timings updated 2026-11-24, see below); fix coarsened to 2 decimals before use
 - [x] Reverse geocoding (platform Geocoder, tr-TR) with offline nearest-province fallback (`TurkishProvinces.nearest`, tested)
 - [x] Picker: 81 provinces offline + district search (Geocoder, Turkey bounding box); header opens it
 - [x] States: loading / failed (retry, choose city) / needs location (allow, settings, choose city); pull-to-refresh;
@@ -71,6 +71,17 @@ Updated: 2026-11-20
 - [x] `PLAY_STORE.md`, `RELEASE_CHECKLIST.md`, `docs/gizlilik.html` (Android privacy policy) + `docs/index.html`
 - [x] Fixes: travel default date and screen dates follow the app clock; a question asked before TTS is ready is no longer
       overwritten by the pending auto-briefing; location asks all providers at once (10 s budget instead of up to 24 s)
+
+## Done (iOS parity, 2026-11-24 — iOS 8ee0cef, 3d1d426, 9cc065e, 2adb5ce)
+- [x] Location: one shared in-flight fix, 12 s budget, fresh cached fix ≤ 2 min, fallback ≤ 30 min, coarse fixes ≤ 25 km accepted;
+      failed fix → last GPS place ≤ 12 h as `LAST_KNOWN` with badge "Son bilinen konum · yenilemek için aşağı çek"
+      (`lastPlaceAt` stored only for real fixes); privacy page updated
+- [x] Rain while already raining (`LaterPrecipitationRelation`: continues / intensifies / resumes) in briefing, answers, morning
+- [x] Umbrella answer follows hourly data (daily probability only without hourly data)
+- [x] Speech: `SpeechTextNormalizer` (spoken "14", "9 30", "ultraviyole", "Meteoroloji"; subtitles unchanged, word ranges mapped
+      back); "Ses tonu" (Pofuduk 1.12 default / Doğal 1.0 — Android had no pitch before); hint + "Ses verilerini aç" when only a
+      basic Turkish voice is in use; best voice re-picked on resume; clearer MGM card text
+- [x] core tests: 200 passing (+1 opt-in live skipped); emulator: live Apple Weather forecast, settings tone picker
 
 ## Open
 - [x] Privacy policy live: https://onurercan88.github.io/pofuduk-android/gizlilik.html (GitHub Pages, `docs/`)

@@ -13,8 +13,10 @@ import com.pofuduk.core.model.WeatherDataSource
 import com.pofuduk.core.model.WeatherTheme
 import com.pofuduk.core.util.hour
 import com.pofuduk.core.util.roundedInt
+import com.pofuduk.core.util.secondsSince
 import java.time.Instant
 import java.time.ZoneId
+import kotlin.math.max
 
 /**
  * Turns factual analysis into Pofuduk's voice. Every number and event comes from [WeatherAnalysis]
@@ -210,8 +212,14 @@ class CharacterPersonalityEngine(
             PrecipitationKind.THUNDERSTORM -> "gök gürültülü sağanak"
         }
 
+        // Precipitating now while the forecast's period starts later (the forecast missed this shower).
+        val nowNoun = precipitationNoun(a.current.condition)
+
         if (!p.isLikely) {
             val probabilityText = p.maxProbability?.let { " yüzde $it civarında" } ?: ""
+            if (a.laterPrecipitation != null && nowNoun != null) {
+                return listOf("Şu sıralar $nowNoun var. Saat $start sonrasında da $noun ihtimali$probabilityText.")
+            }
             val whenText = if (startsNow) "Önümüzdeki saatlerde" else "Saat $start sonrasında"
             return listOf("$whenText $noun ihtimali$probabilityText. Kesin değil ama hazırlıklı olmakta fayda var.")
         }
@@ -223,8 +231,31 @@ class CharacterPersonalityEngine(
             duration >= 2 -> " ve yaklaşık $duration saat sürebilir"
             else -> ""
         }
-        result += if (startsNow) "Şu sıralar $noun var$durationText."
-        else "Saat $start civarında $noun başlaması bekleniyor$durationText."
+        val relation = a.laterPrecipitation
+        result += when {
+            relation == LaterPrecipitationRelation.CONTINUES && nowNoun != null -> {
+                // Same precipitation going on: no new "start" time, just how long it may last.
+                val hoursLeft = max(1, (p.end.secondsSince(a.analyzedAt) / 3600).roundedInt())
+                val lasting = when {
+                    p.lastsUntilEndOfDay -> " ve gün sonuna kadar sürebilir"
+                    hoursLeft >= 2 -> " ve yaklaşık $hoursLeft saat daha sürebilir"
+                    else -> ""
+                }
+                "Şu sıralar $nowNoun var$lasting."
+            }
+            relation == LaterPrecipitationRelation.INTENSIFIES && nowNoun != null -> {
+                val change = if (p.kind == PrecipitationKind.THUNDERSTORM && a.current.condition != WeatherCondition.THUNDERSTORM) {
+                    "gök gürültülü sağanağa dönmesi"
+                } else {
+                    "kuvvetlenmesi"
+                }
+                "Şu sıralar $nowNoun var; saat $start civarında $change bekleniyor$durationText."
+            }
+            relation == LaterPrecipitationRelation.RESUMES && nowNoun != null ->
+                "Şu anki $nowNoun ara verebilir; saat $start civarında yeniden başlaması bekleniyor$durationText."
+            startsNow -> "Şu sıralar $noun var$durationText."
+            else -> "Saat $start civarında $noun başlaması bekleniyor$durationText."
+        }
 
         when {
             p.kind == PrecipitationKind.THUNDERSTORM -> result += "Gök gürültüsü sırasında açık alanlarda bulunmamaya özen göster."
@@ -234,6 +265,19 @@ class CharacterPersonalityEngine(
             else -> Unit
         }
         return result
+    }
+
+    companion object {
+        /** What is falling right now, as a noun ("Şu sıralar yağmur var"); null when dry. */
+        internal fun precipitationNoun(condition: WeatherCondition): String? = when (condition) {
+            WeatherCondition.DRIZZLE -> "çisenti"
+            WeatherCondition.RAIN -> "yağmur"
+            WeatherCondition.HEAVY_RAIN -> "kuvvetli yağmur"
+            WeatherCondition.THUNDERSTORM -> "gök gürültülü sağanak"
+            WeatherCondition.SNOW -> "kar"
+            WeatherCondition.SLEET -> "karla karışık yağmur"
+            else -> null
+        }
     }
 
     fun windSentence(wind: WindOutlook): String {

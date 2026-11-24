@@ -163,6 +163,32 @@ class ConversationFlowTest {
         assertTrue(dry.contains("yağış beklenmiyor"), dry)
     }
 
+    /**
+     * Today's daily probability also covers past hours; with dry remaining hours the umbrella advice must not say
+     * "take one" next to "yağış beklenmiyor".
+     */
+    @Test fun umbrellaFollowsHourlyNotDailyProbability() {
+        val sunny = snapshot(Scenario.SUNNY)
+        var s = sunny.copy(daily = sunny.daily.mapIndexed { i, d -> if (i == 0) d.copy(precipitationProbability = 70) else d })
+        val today = ResolvedQuery(WeatherTopic.UMBRELLA, DateReference.Today)
+        assertEquals(
+            listOf("Şemsiyeye gerek yok gibi görünüyor.", "Bugün yağış beklenmiyor."),
+            answers.answer(today, s, now).sentences,
+        )
+
+        s = s.copy(current = s.current.copy(condition = WeatherCondition.RAIN))
+        assertEquals(
+            listOf("Hemen çıkacaksan şemsiye iyi olur.", "Şu an yağış var ama sonraki saatlerde başka yağış beklenmiyor."),
+            answers.answer(today, s, now).sentences,
+        )
+
+        // No hourly data that far ahead: the daily probability is all there is.
+        s = s.copy(daily = s.daily.mapIndexed { i, d -> if (i == 3) d.copy(precipitationProbability = 50) else d })
+        val text = answers.answer(ResolvedQuery(WeatherTopic.UMBRELLA, DateReference.InDays(3)), s, now).fullText
+        assertTrue(text.startsWith("Yanına bir şemsiye almanda fayda var."), text)
+        assertTrue(text.contains("yüzde 50"), text)
+    }
+
     @Test fun noRainSaysSo() {
         val q = ResolvedQuery(WeatherTopic.RAIN, DateReference.Tomorrow)
         assertEquals(listOf("Yarın yağış beklenmiyor."), answers.answer(q, snapshot(Scenario.SUNNY), now).sentences)

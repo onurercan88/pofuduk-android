@@ -17,7 +17,23 @@ enum class SubtitleSize {
         }
 }
 
-/** Personalization stored on device only (no sync, no inferred personal attributes). */
+/** Pitch of Pofuduk's voice. Raising the system voice's pitch can sound more synthetic, so users can pick. */
+@Serializable
+enum class VoiceTone {
+    /** A little higher, the character's original voice. */
+    POFUDUK,
+    /** The TTS voice's own pitch. */
+    NATURAL;
+
+    val turkishName: String get() = if (this == POFUDUK) "Pofuduk (ince)" else "Doğal"
+    val pitchMultiplier: Float get() = if (this == POFUDUK) 1.12f else 1.0f
+}
+
+/**
+ * Personalization stored on device only (no sync, no inferred personal attributes).
+ * Missing keys keep their defaults, so preferences saved by an older version (without newer settings such as
+ * [voiceTone]) still load instead of resetting everything.
+ */
 @Serializable
 data class UserPreferences(
     val style: PersonalityStyle = PersonalityStyle.FRIENDLY,
@@ -27,6 +43,7 @@ data class UserPreferences(
     /** TextToSpeech voice name; null = best installed Turkish voice. */
     val voiceName: String? = null,
     val subtitleSize: SubtitleSize = SubtitleSize.STANDARD,
+    val voiceTone: VoiceTone = VoiceTone.POFUDUK,
 ) {
     val clampedSpeechRate: Double get() = speechRateMultiplier.coerceIn(SPEECH_RATE_MIN, SPEECH_RATE_MAX)
 

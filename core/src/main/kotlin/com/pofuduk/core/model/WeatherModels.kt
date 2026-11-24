@@ -11,9 +11,13 @@ import java.time.ZoneId
 @Serializable
 data class Coordinate(val latitude: Double, val longitude: Double)
 
-/** How a place was determined. IP-based locations are always approximate. */
+/**
+ * How a place was determined. IP-based locations are always approximate.
+ * LAST_KNOWN: the device couldn't get a fix right now, so the last GPS place (≤ 12 h old, ~1 km) is used
+ * and labelled as such.
+ */
 @Serializable
-enum class LocationSource { GPS, IP_APPROXIMATE, MANUAL, DEMO }
+enum class LocationSource { GPS, IP_APPROXIMATE, MANUAL, DEMO, LAST_KNOWN }
 
 @Serializable
 data class Place(

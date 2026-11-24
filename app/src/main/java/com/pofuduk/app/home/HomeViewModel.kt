@@ -32,10 +32,12 @@ import com.pofuduk.core.model.CharacterMood
 import com.pofuduk.core.model.LocationIssue
 import com.pofuduk.core.model.LocationPermission
 import com.pofuduk.core.model.LocationResolution
+import com.pofuduk.core.model.LocationSource
 import com.pofuduk.core.model.Place
 import com.pofuduk.core.model.TapReaction
 import com.pofuduk.core.model.TapReactionPlayback
 import com.pofuduk.core.model.UserPreferences
+import com.pofuduk.core.model.VoiceTone
 import com.pofuduk.core.model.WeatherSnapshot
 import com.pofuduk.core.model.WeatherTheme
 import com.pofuduk.core.provider.WeatherError
@@ -118,6 +120,9 @@ data class HomeUiState(
         }
 
     val isStale: Boolean get() = snapshot?.isStale(AppClock.now()) == true
+
+    /** The device couldn't get a fix; the last GPS place (≤ 12 h) is shown. Pull to refresh tries again. */
+    val isLastKnownLocation: Boolean get() = snapshot?.place?.source == LocationSource.LAST_KNOWN
 }
 
 /**
@@ -152,7 +157,9 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
     )
     val state: StateFlow<HomeUiState> = _state.asStateFlow()
 
-    private val speech = SpeechService(application, this, _state.value.preferences.voiceName)
+    private val speech = SpeechService(
+        application, this, _state.value.preferences.voiceName, _state.value.preferences.voiceTone.pitchMultiplier,
+    )
     private val travelService get() = TravelWeatherService(_state.value.demoScenario?.let { DemoWeatherRepository(it, AppClock.now) } ?: repository, AppClock.now)
     private var travelSearchJob: Job? = null
 
@@ -288,6 +295,8 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
     fun onResume() {
         notifications.refreshPermission()
         val current = _state.value
+        // A better voice may have been downloaded in the TTS engine meanwhile: re-pick (cheap, no speech).
+        if (current.preferences.voiceName == null && !current.isSpeaking) speech.setVoice(null)
         val zone = current.snapshot?.place?.timeZone
         if (current.loadState == LoadState.Loaded && current.demoScenario == null && zone != null && notifications.shouldGreet(zone)) {
             load(autoSpeak = true)
@@ -446,9 +455,13 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
         _state.update { it.copy(preferences = new) }
         graph.userPreferences.save(new)
         if (new.voiceName != old.voiceName) speech.setVoice(new.voiceName)
+        if (new.voiceTone != old.voiceTone) speech.setPitch(new.voiceTone.pitchMultiplier)
     }
 
     fun availableVoices(): List<VoiceOption> = speech.availableVoices()
+
+    /** Only a basic Turkish voice is in use: Settings explains how to get a more natural one. */
+    fun canImproveVoice(): Boolean = speech.canImproveVoice()
 
     fun previewVoice() = say(
         Briefing(listOf("Merhaba! Ben Pofuduk. Havayı sana böyle anlatırım."), _state.value.restingMood, _state.value.theme),
@@ -464,6 +477,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
         graph.keyValue.remove(SOUND_KEY)
         conversation.reset()
         speech.setVoice(null)
+        speech.setPitch(VoiceTone.POFUDUK.pitchMultiplier)
         _state.update {
             it.copy(
                 preferences = UserPreferences(), soundOn = true, showSettings = false, lastQuestion = null,

@@ -1,7 +1,9 @@
 package com.pofuduk.core.model
 
+import com.pofuduk.core.util.InstantSerializer
 import com.pofuduk.core.util.roundedHalfAway
 import kotlinx.serialization.Serializable
+import java.time.Instant
 
 /** How the user wants their location determined. IP is only ever used when explicitly chosen. */
 @Serializable
@@ -51,6 +53,9 @@ data class LocationPreference(
      * notification refresh, which never asks for location.
      */
     val lastPlace: Place? = null,
+    /** When [lastPlace] was last confirmed by a real fix (null in data saved by older versions). */
+    @Serializable(with = InstantSerializer::class)
+    val lastPlaceAt: Instant? = null,
 ) {
     /** Place for background work: the user's manual choice, else the last (coarsened) place. */
     val backgroundPlace: Place? get() = if (mode == LocationMode.MANUAL) manualPlace else lastPlace

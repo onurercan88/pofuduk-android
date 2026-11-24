@@ -57,7 +57,9 @@ class ConfiguredMGMWarningProvider(private val feedUrl: String?, private val htt
     }
 
     companion object {
-        const val UNAVAILABLE_REASON = "MGM resmi uyarıları için yetkili bir veri bağlantısı henüz yok."
+        /** Worded so it does not read like a broken connection (a user expected a real warning here). */
+        const val UNAVAILABLE_REASON =
+            "Pofuduk resmi MGM uyarılarını henüz otomatik gösteremiyor. Bölgendeki güncel uyarıları MGM'nin sayfasından görebilirsin."
     }
 }
 

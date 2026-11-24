@@ -4,6 +4,7 @@ import com.pofuduk.core.datetime.TurkishFormatting
 import com.pofuduk.core.datetime.TurkishGrammar
 import com.pofuduk.core.engine.CharacterPersonalityEngine
 import com.pofuduk.core.engine.ClothingRecommendation
+import com.pofuduk.core.engine.LaterPrecipitationRelation
 import com.pofuduk.core.engine.PrecipitationIntensity
 import com.pofuduk.core.engine.PrecipitationKind
 import com.pofuduk.core.engine.WeatherAnalysis
@@ -117,8 +118,20 @@ class MorningBriefingEngine(
             else "Gün boyunca sıcaklık ${TurkishFormatting.temperature(peak)} civarında."
         }
 
-        // Rain.
-        if (p != null) {
+        // Rain. Precipitating now: never "başlıyor"/"beklenmiyor" as if it were dry (see LaterPrecipitationRelation).
+        val nowNoun = CharacterPersonalityEngine.precipitationNoun(analysis.current.condition)
+        val relation = analysis.laterPrecipitation
+        if (p != null && p.isLikely && relation != null && nowNoun != null) {
+            val part = dayPartPhrase(p.start.hour(zone))
+            s += when (relation) {
+                LaterPrecipitationRelation.CONTINUES -> "Şu sıralar $nowNoun var ve bir süre daha sürmesi bekleniyor."
+                LaterPrecipitationRelation.INTENSIFIES -> "Şu sıralar $nowNoun var; $part kuvvetlenmesi bekleniyor."
+                LaterPrecipitationRelation.RESUMES -> "Şu anki $nowNoun ara verebilir; $part yeniden başlaması bekleniyor."
+            }
+            if (p.intensity == PrecipitationIntensity.HEAVY) s += "Yağışın yer yer kuvvetli olması bekleniyor."
+        } else if (p == null && analysis.hasHourlyCoverage && nowNoun != null) {
+            s += "Şu sıralar $nowNoun var; ardından gün boyu başka yağış beklenmiyor."
+        } else if (p != null) {
             val part = dayPartPhrase(p.start.hour(zone))
             val noun = when (p.kind) {
                 PrecipitationKind.SNOW -> "kar"

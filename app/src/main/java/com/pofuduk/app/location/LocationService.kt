@@ -8,6 +8,7 @@ import com.pofuduk.core.model.LocationResolution
 import com.pofuduk.core.model.LocationSource
 import com.pofuduk.core.model.Place
 import com.pofuduk.core.store.KeyValueStore
+import java.time.Instant
 
 /** App-facing location API. Policy lives in [LocationResolver] (core). No IP location on Android. */
 class LocationService(private val device: DeviceLocationProvider, private val kv: KeyValueStore) {
@@ -25,8 +26,9 @@ class LocationService(private val device: DeviceLocationProvider, private val kv
 
     suspend fun resolve(): LocationResolution {
         val result = resolver.resolve(preference, permission, gps = { device.currentPlace() }, ip = null)
-        if (result is LocationResolution.Resolved) {
-            preference = preference.copy(lastPlace = LocationPreference.coarsened(result.place))
+        // A last-known fallback must not refresh its own timestamp (it would never expire).
+        if (result is LocationResolution.Resolved && result.place.source != LocationSource.LAST_KNOWN) {
+            preference = preference.copy(lastPlace = LocationPreference.coarsened(result.place), lastPlaceAt = Instant.now())
             store.save(preference)
         }
         return result
@@ -44,7 +46,7 @@ class LocationService(private val device: DeviceLocationProvider, private val kv
     }
 
     fun selectManual(place: Place) {
-        preference = LocationPreference(LocationMode.MANUAL, place.copy(source = LocationSource.MANUAL), preference.lastPlace)
+        preference = preference.copy(mode = LocationMode.MANUAL, manualPlace = place.copy(source = LocationSource.MANUAL))
         store.save(preference)
     }
 
