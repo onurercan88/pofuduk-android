@@ -39,8 +39,8 @@ android {
         applicationId = "com.pofuduk.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.0.1"
         buildConfigField("String", "WEATHERKIT_PROXY_URL", quoted(buildSetting("pofuduk.weatherkitProxyUrl")))
         buildConfigField("String", "WEATHERKIT_APP_KEY", quoted(buildSetting("pofuduk.weatherkitAppKey")))
     }
