@@ -78,7 +78,8 @@ Updated: 2026-11-20
 - [x] Internal testing: 1 (1.0.0) live for the "Pofuduk iç test" list (3), join link
       https://play.google.com/apps/internaltest/4700048428489224599 (2026-11-23)
 - [x] Closed test track (Türkiye, same list, 12 testers) approved and active (2026-11-23)
-- [ ] (you) ≥ 12 testers opted in for 14 days, then production access
+- [x] ≥ 12 testers opted in (list 15) — 14-day closed test started 2026-11-24
+- [ ] (you) Keep ≥ 12 opted in until 2026-12-08, then apply for production access
 - [ ] Upload native debug symbols (Play warning; `ndk { debugSymbolLevel = "FULL" }`)
 - [ ] Travel abroad: Android Geocoder gives no time zone → Turkey-only search for now
 - [ ] Alarms are cleared by the system on reboot/force-stop; future ones come back with the next refresh, a due one in that gap is lost
